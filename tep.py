@@ -6,7 +6,6 @@ from Neural_Net_evid import PhysNet
 from utils import get_metric_func
 # from neural_network.activation_fn import *
 from Neural_Net_evid import gather_nd
-from tqdm import trange
 #====================================
 # Some functions
 #====================================
@@ -185,7 +184,11 @@ def predict(model,batch,num_v,metric_func='rmse'):
         out = model.energy(Z_v, R_v, idx_i_v, idx_j_v, Qref_v, batch_seg_v)
         preds_b = evidential(out)
 
+    # loss
     preds = preds_b
+
+    loss = evidential_loss(preds[:, 0], preds[:, 1], preds[:, 2], preds[:, 3], Eref_v).view(len(N_v), 1)
+    loss = loss.sum() / len(N_v)
 
     p = []
     c = []
@@ -211,7 +214,7 @@ def predict(model,batch,num_v,metric_func='rmse'):
     Eref_v = Eref_v.detach().numpy()
     Error_v = torch.mean(torch.abs(p - Eref_v))
     num_v = num_v + N_v.dim()
-    return num_v,p, c, var, Error_v
+    return num_v,loss, p, c, var, Error_v
 
 
 #------------------------------------

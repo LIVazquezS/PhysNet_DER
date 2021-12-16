@@ -1,6 +1,7 @@
-# PhysNet Torch
-Implementation of Physnet on PyTorch
+# Evidential version of PhysNet
+Based on the Pytorch version of PhysNet, an evidential layer is implemented. 
 
 ## To Do:
-- Validation against old physnet
+- Run in gpu
+- Check results
 

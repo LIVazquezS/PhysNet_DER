@@ -1,7 +1,7 @@
 import numpy  as np 
 import torch
 import torch.utils.data as data
-
+ #TODO : Add options to read .db and .h5 files
 class DataContainer:
     
     def __repr__(self):

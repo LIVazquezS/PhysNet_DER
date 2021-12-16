@@ -325,15 +325,13 @@ valid_batches = data.get_valid_batches()
 # Initialize counter for estimated time per epoch
 time_train_estimation = np.nan
 time_train = 0.0
-
+best_loss = np.Inf
 # Training loop
 # Terminate training when maximum number of iterations is reached
 while epoch <= args.max_steps:
 
     # Reset error averages
-    #TODO Change
     num_t,loss_ev_t, emae_t, pnorm_t, gnorm_t = reset_averages(device=args.device)
-
 
     # Create train batches
     train_batches, N_train_batches = data.get_train_batches()
@@ -425,14 +423,12 @@ while epoch <= args.max_steps:
         # Reset error averages
         #TODO Change this again
         num_v, p, c, var, emae_v = reset_averages()
-
+        loss_v = torch.tensor(0.0, dtype=torch.float32,device=args.device)
         # Start valid timer
         valid_start = time()
 
         for ib, batch in enumerate(valid_batches):
-            num_v,p, c, var, emae_v = predict(model, batch)
-
-
+            num_v,loss_v,p, c, var, emae_v = predict(model, batch)
 
         # Stop valid timer
         valid_end = time()
@@ -440,8 +436,8 @@ while epoch <= args.max_steps:
 
         # Update validation results
         results_v = {}
-        # loss_avg_v_temp = loss_avg_v.detach().cpu()
-        # results_v["loss_valid"] = loss_avg_v_temp.numpy()
+        loss_avg_v_temp = loss_v.detach().cpu()
+        results_v["loss_valid"] = loss_avg_v_temp.numpy()
         results_v["time_valid"] = time_valid
         if data.include_E:
             emae_v_temp = emae_v.detach().cpu()
@@ -451,64 +447,64 @@ while epoch <= args.max_steps:
         for key, value in results_v.items():
             summary_writer.add_scalar(key, value, global_step=epoch)
 
-        # if results_v["loss_valid"] < best_loss:
-        #
-        #     # Assign results of best validation
-        #     best_loss = results_v["loss_valid"]
-        #     if data.include_E:
-        #         best_emae = results_v["energy_mae_valid"]
-        #         best_ermse = results_v["energy_rmse_valid"]
-        #     else:
-        #         best_emae = np.Inf
-        #         best_ermse = np.Inf
-        #
-        #     best_epoch = epoch.numpy()
-        #
-        #     # Save best results
-        #     np.savez(
-        #         best_loss_file, loss=best_loss,
-        #         emae=best_emae, ermse=best_ermse,
-        #         fmae=best_fmae, frmse=best_frmse,
-        #         qmae=best_qmae, qrmse=best_qrmse,
-        #         dmae=best_dmae, drmse=best_drmse,
-        #         epoch=best_epoch)
-        #
-        #     # Save best model variables
-        #     save_checkpoint(model=model, epoch=epoch, optimizer=optimizer,best=True)
-        #
-        # # Update best results
-        # results_b = {}
-        # results_b["loss_best"] = best_loss
-        # if data.include_E:
-        #     results_b["energy_mae_best"] = best_emae
-        #     results_b["energy_rmse_best"] = best_ermse
-        #
-        # # Write the results to tensorboard
-        # for key, value in results_b.items():
-        #     summary_writer.add_scalar(key, value, global_step=epoch)
+        if results_v["loss_valid"] < best_loss:
+
+            # Assign results of best validation
+            best_loss = results_v["loss_valid"]
+            if data.include_E:
+                best_emae = results_v["energy_mae_valid"]
+                best_ermse = results_v["energy_rmse_valid"]
+            else:
+                best_emae = np.Inf
+                best_ermse = np.Inf
+
+            best_epoch = epoch.numpy()
+
+            # Save best results
+            # np.savez(
+            #     best_loss_file, loss=best_loss,
+            #     emae=best_emae, ermse=best_ermse,
+            #     fmae=best_fmae, frmse=best_frmse,
+            #     qmae=best_qmae, qrmse=best_qrmse,
+            #     dmae=best_dmae, drmse=best_drmse,
+            #     epoch=best_epoch)
+
+            # Save best model variables
+            save_checkpoint(model=model, epoch=epoch, optimizer=optimizer,best=True)
+
+        # Update best results
+        results_b = {}
+        results_b["loss_best"] = best_loss
+        if data.include_E:
+            results_b["energy_mae_best"] = best_emae
+            results_b["energy_rmse_best"] = best_ermse
+
+        # Write the results to tensorboard
+        for key, value in results_b.items():
+            summary_writer.add_scalar(key, value, global_step=epoch)
 
 
         # for var, bck in zip(model.trainable_variables, backup_vars):
         #     var.assign(bck)
 
-    # Generate summaries
-    # if ((epoch % args.summary_interval == 0)
-    #         and (epoch >= args.validation_interval)):
-    #
-    #     if data.include_E:
-    #         print(
-    #             "Summary Epoch: " + \
-    #             str(epoch.numpy()) + '/' + str(args.max_steps),
-    #             "\n    Loss   train/valid: {0: 1.3e}/{1: 1.3e}, ".format(
-    #                 results_t["loss_train"],
-    #                 results_v["loss_valid"]),
-    #             " Best valid loss:   {0: 1.3e}, ".format(
-    #                 results_b["loss_best"]),
-    #             "\n    MAE(E) train/valid: {0: 1.3e}/{1: 1.3e}, ".format(
-    #                 results_t["energy_mae_train"],
-    #                 results_v["energy_mae_valid"]),
-    #             " Best valid MAE(E): {0: 1.3e}, ".format(
-    #                 results_b["energy_mae_best"]))
+    #Generate summaries
+    if ((epoch % args.summary_interval == 0)
+            and (epoch >= args.validation_interval)):
+
+        if data.include_E:
+            print(
+                "Summary Epoch: " + \
+                str(epoch.numpy()) + '/' + str(args.max_steps),
+                "\n    Loss   train/valid: {0: 1.3e}/{1: 1.3e}, ".format(
+                    results_t["loss_train"],
+                    results_v["loss_valid"]),
+                " Best valid loss:   {0: 1.3e}, ".format(
+                    results_b["loss_best"]),
+                "\n    MAE(E) train/valid: {0: 1.3e}/{1: 1.3e}, ".format(
+                    results_t["energy_mae_train"],
+                    results_v["energy_mae_valid"]),
+                " Best valid MAE(E): {0: 1.3e}, ".format(
+                    results_b["energy_mae_best"]))
 
     # Increment epoch number
     epoch += 1
