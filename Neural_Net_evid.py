@@ -94,7 +94,7 @@ class PhysNet(nn.Module):
                  # Rate for dropout,
                  rate=0.0,
                  # Device to use
-                 device="cpu",
+                 device="cuda",
                  #Summary writter
                  writer = None
                  ):
@@ -193,25 +193,6 @@ class PhysNet(nn.Module):
         Dij = torch.sqrt(m)
         # ReLU: y = max(0, x), prevent negative sqrt
         return Dij
-
-    def evidential(self,out):
-
-        output = torch.cat(out, dim=1)
-
-        min_val = 1e-6
-
-        # Split the outputs into the four distribution parameters
-        means, loglambdas, logalphas, logbetas = torch.split(out,
-                                                             out.shape[1] // 8,
-                                                             dim=1)
-        lambdas = torch.nn.Softplus()(loglambdas) + min_val
-        alphas = torch.nn.Softplus()(logalphas) + min_val + 1  # add 1 for numerical contraints of Gamma function
-        betas = torch.nn.Softplus()(logbetas) + min_val
-
-        # Return these parameters as the output of the model
-        output = torch.stack((means, lambdas, alphas, betas),
-                             dim=2).view(output.size())
-        return output
 
     def evidential_atomic_properties(self, Z, R, idx_i, idx_j, offsets=None, sr_idx_i=None, sr_idx_j=None,
                     sr_offsets=None):

@@ -129,11 +129,13 @@ def evidential_loss(mu, v, alpha, beta, targets, lam=1, epsilon=1e-4):
 # Train Step
 #------------------------------------
 
-def train(model,batch,num_t,maxnorm=1000):
+def train(model,batch,num_t,device,maxnorm=1000):
     model.train()
+    batch = [i.to(device) for i in batch]
     N_t, Z_t, R_t, Eref_t, Earef_t, Fref_t, Qref_t, Qaref_t, Dref_t = batch
+
     # Get indices
-    idx_t, idx_i_t, idx_j_t, batch_seg_t = get_indices(N_t)
+    idx_t, idx_i_t, idx_j_t, batch_seg_t = get_indices(N_t,device=device)
 
     # Gather data
     Z_t = gather_nd(Z_t, idx_t)
@@ -164,11 +166,12 @@ def train(model,batch,num_t,maxnorm=1000):
 #====================================
 # Prediction
 #====================================
-def predict(model,batch,num_v,metric_func='rmse'):
+def predict(model,batch,num_v,device):
     model.eval()
+    batch = [i.to(device) for i in batch]
     N_v, Z_v, R_v, Eref_v, Earef_v, Fref_v, Qref_v, Qaref_v, Dref_v = batch
     # Get indices
-    idx_v, idx_i_v, idx_j_v, batch_seg_v = get_indices(N_v)
+    idx_v, idx_i_v, idx_j_v, batch_seg_v = get_indices(N_v,device=device)
     Z_v = gather_nd(Z_v, idx_v)
     R_v = gather_nd(R_v, idx_v)
 
@@ -190,6 +193,7 @@ def predict(model,batch,num_v,metric_func='rmse'):
     loss = evidential_loss(preds[:, 0], preds[:, 1], preds[:, 2], preds[:, 3], Eref_v).view(len(N_v), 1)
     loss = loss.sum() / len(N_v)
 
+    preds = preds.cpu().detach().numpy()
     p = []
     c = []
     var = []

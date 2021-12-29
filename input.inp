@@ -30,3 +30,4 @@
 --show_progress=True
 --save_interval=5
 --record_run_metadata=0
+--device=cuda

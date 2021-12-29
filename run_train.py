@@ -106,7 +106,7 @@ parser.add_argument('--save_interval', default=5, type=int,
                     help="Save progress every N steps")
 parser.add_argument('--record_run_metadata', default=0, type=int,
                     help="Records metadata like memory consumption etc.")
-parser.add_argument('--device',default='cpu',type=str,
+parser.add_argument('--device',default='cuda',type=str,
                     help='Selects the device that will be used for training')
 
 # ------------------------------------------------------------------------------
@@ -355,7 +355,7 @@ while epoch <= args.max_steps:
                 length=42)
 
         # Training step
-        num_t,loss_ev_t, emae_t, pnorm_t, gnorm_t = train(model, batch,num_t, maxnorm=args.max_norm)
+        num_t,loss_ev_t, emae_t, pnorm_t, gnorm_t = train(model, batch,num_t,device=args.device,maxnorm=args.max_norm)
 
         optimizer.step()
         ema.update()
@@ -404,8 +404,8 @@ while epoch <= args.max_steps:
         loss_ev_t_temp = loss_ev_t.detach().cpu()
         results_t["loss_train"] = loss_ev_t_temp.numpy()
         results_t["time_train"] = time_train
-        results_t["norm_parm"] = pnorm_t.detach().cpu().numpy()
-        results_t["norm_grad"] = gnorm_t.detach().cpu().numpy()
+        results_t["norm_parm"] = pnorm_t
+        results_t["norm_grad"] = gnorm_t
         if data.include_E:
             emae_t_temp = emae_t.detach().cpu()
             results_t["energy_mae_train"] = emae_t_temp.numpy()
@@ -428,7 +428,7 @@ while epoch <= args.max_steps:
         valid_start = time()
 
         for ib, batch in enumerate(valid_batches):
-            num_v,loss_v,p, c, var, emae_v = predict(model, batch)
+            num_v,loss_v,p, c, var, emae_v = predict(model, batch, num_v,device=args.device)
 
         # Stop valid timer
         valid_end = time()
