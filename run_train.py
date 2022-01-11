@@ -440,9 +440,8 @@ while epoch <= args.max_steps:
         results_v["loss_valid"] = loss_avg_v_temp.numpy()
         results_v["time_valid"] = time_valid
         if data.include_E:
-            emae_v_temp = emae_v.detach().cpu()
-            results_v["energy_mae_valid"] = emae_v_temp.numpy()
-            results_v["energy_rmse_valid"] = np.sqrt(emae_v_temp.numpy())
+            results_v["energy_mae_valid"] = emae_v
+            results_v["energy_rmse_valid"] = np.sqrt(emae_v)
 
         for key, value in results_v.items():
             summary_writer.add_scalar(key, value, global_step=epoch)

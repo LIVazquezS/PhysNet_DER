@@ -61,7 +61,8 @@ def get_indices(Nref,device='cpu'):
 
         # Increment auxiliary parameter
         Nref_tot = Nref_tot + Nref_a
-
+    #Reorder the idx in i
+    idx_i = torch.sort(idx_i)[0]
     # Combine indices for batch image and respective atoms
     idx = torch.stack([batch_seg, idx], dim=1)
     return idx.type(torch.int64), idx_i.type(torch.int64), idx_j.type(torch.int64), batch_seg.type(torch.int64)
@@ -148,7 +149,7 @@ def train(model,batch,num_t,device,maxnorm=1000):
     if torch.count_nonzero(Qaref_t) != 0:
         Qaref_t = gather_nd(Qaref_t, idx_t)
     model.zero_grad()
-    out = model.energy(Z_t, R_t, idx_i_t, idx_j_t, Qref_t, batch_seg_t)
+    out = model.energy_evidential(Z_t, R_t, idx_i_t, idx_j_t, Qref_t, batch_seg_t)
 
     p = evidential(out)
     mae_energy = torch.mean(torch.abs(p[:,0] - Eref_t))
@@ -184,7 +185,7 @@ def predict(model,batch,num_v,device):
 
     # Gather data
     with torch.no_grad():
-        out = model.energy(Z_v, R_v, idx_i_v, idx_j_v, Qref_v, batch_seg_v)
+        out = model.energy_evidential(Z_v, R_v, idx_i_v, idx_j_v, Qref_v, batch_seg_v)
         preds_b = evidential(out)
 
     # loss
@@ -216,7 +217,7 @@ def predict(model,batch,num_v,device):
     # c = (scaler2 * c)
     # var = (scaler2 * var)
     Eref_v = Eref_v.detach().numpy()
-    Error_v = torch.mean(torch.abs(p - Eref_v))
+    Error_v = np.mean(np.abs(p - Eref_v))
     num_v = num_v + N_v.dim()
     return num_v,loss, p, c, var, Error_v
 

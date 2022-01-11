@@ -48,7 +48,7 @@ parser.add_argument("--validation_interval", default=5, type=int)
 parser.add_argument("--show_progress", default=True, type=bool)
 parser.add_argument("--save_interval", default=5, type=int)
 parser.add_argument("--record_run_metadata", default=0, type=int)
-parser.add_argument('--device', default='cuda', type=str)
+parser.add_argument('--device', default='cpu', type=str)
 
 # Read config file
 config = 'input.inp'
@@ -71,8 +71,8 @@ model = PhysNet(
     activation_fn="shift_softplus",
     device=args.device)
 
-checkpoint = torch.load('best_model.pt')
-print(checkpoint["state_dict"])
+checkpoint = torch.load('best_model.pt',map_location=torch.device('cpu'))
+# print(checkpoint["state_dict"])
 model.load_state_dict(checkpoint['model_state_dict'])
 model.eval()
 
@@ -90,6 +90,7 @@ def get_indices(atoms, device='cpu'):
     # Indices for atom pairs ij - Atom j
     idx_j = torch.roll(idx, -1, dims=0)
 
+    idx_i = torch.sort(idx_i)[0]
     if N >= 2:
         for Na in torch.arange(2, N):
             Na_tmp = Na.cpu()
@@ -99,6 +100,7 @@ def get_indices(atoms, device='cpu'):
 
     return idx_i.to(device), idx_j.to(device)
 
+
 file = 'a_395.xyz'
 #read input file
 atoms = read(file)
@@ -106,6 +108,10 @@ atoms = read(file)
 Z = torch.tensor(atoms.get_atomic_numbers(),dtype=torch.int32,device=args.device)
 R = torch.tensor(atoms.get_positions(),dtype=torch.float32,device=args.device)
 idx_i, idx_j = get_indices(atoms, device=args.device)
+# print('idx_i',torch.sort(idx_i)[0])
+# print('idx_i shape', idx_i.shape)
+# print('idx_j',idx_j)
+# print('idx_j',idx_j.shape)
 out1 = model.energy(Z, R, idx_i, idx_j)
 print(out1)
 

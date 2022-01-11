@@ -10,6 +10,9 @@ import os
 import numpy as np
 import torch 
 import torch.nn as nn
+import sys, os
+sys.path.append(os.path.abspath(os.path.join('..', 'layers')))
+from layers.utils import segment_sum
 """
 Torch implementation of Grimme's D3 method (only Becke-Johnson damping is 
 implemented) 
@@ -93,8 +96,7 @@ def _ncoord(Zi, Zj, r, idx_i, cutoff=None, k1=d3_k1, rcov=d3_rcov,device='cpu'):
     damp = 1.0/(1.0+torch.exp(-k1*(rr-1.0)))
     if cutoff is not None:
         damp *= _smootherstep(r, cutoff)
-    idu = len(torch.unique(idx_i))
-    x = damp.new_zeros(idu).index_add(0,idx_i.type(torch.int64),damp)
+    x = segment_sum(damp,idx_i)
     return x
 
 def _getc6(ZiZj, nci, ncj, c6ab=d3_c6ab, k3=d3_k3,device='cpu'):
@@ -171,8 +173,9 @@ def edisp(Z, r, idx_i, idx_j, cutoff=None, r2=None, r6=None, r8=None, s6=d3_s6,
         e8 = torch.where(r < cutoff, e8, torch.zeros_like(e8))
     e6 = -0.5*s6*c6*e6
     e8 = -0.5*s8*c8*e8
-    idu = len(torch.unique(idx_i))
-    z = (e6+e8).new_zeros(idu).index_add(0,idx_i.type(torch.int64),e6+e8)
+    z = segment_sum(e6+e8,idx_i)
+    # idu = len(torch.unique(idx_i))
+    # z = (e6+e8).new_zeros(idu).index_add(0,idx_i.type(torch.int64),e6+e8)
     return z
 
 

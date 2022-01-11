@@ -22,10 +22,10 @@ atoms = read(args.input)
 
 #setup calculator (which will be used to describe the atomic interactions)
 calc = PhysNetCalculator(
-    checkpoint="best_model.pt",
+    checkpoint="prueba/best/best_model.pt",
     atoms=atoms,
     charge=args.charge,
-    config='input.inp')
+    config='input1.inp')
 
 #'attach' calculator to atoms object
 atoms.set_calculator(calc)
@@ -35,8 +35,6 @@ atoms.set_calculator(calc)
 
 e,var,sigma2 = atoms.get_potential_energy()
 
-e_final = np.asscalar(e)
-var_final = np.asscalar(var)
-
-print("Potential energy: %.8f eV" % e_final)
-print("Variance: %.8f eV" % var_final)
+print("Potential energy: %.8f eV" % e)
+print("Variance: %.8f eV" % var)
+print("sigma: %8f ev"% sigma2)

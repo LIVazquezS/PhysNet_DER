@@ -122,9 +122,12 @@ class PhysNetCalculator(Calculator):
 
         # Initiate Embedded flag
         # self.pcpot = None
-
+        def load_checkpoint(path):
+            if path is not None:
+                checkpoint = torch.load(path)
+                return checkpoint
         # Load neural network parameter
-        latest_ckpt = self.load_checkpoint(self.checkpoint)
+        latest_ckpt = load_checkpoint(self.checkpoint)
         self._model.load_state_dict(latest_ckpt['model_state_dict'])
         self._model.eval()
         # Calculate properties once to initialize everything
@@ -132,13 +135,6 @@ class PhysNetCalculator(Calculator):
         # Set last_atoms to None as pcpot get enabled later and recalculation
         # becomes necessary again
         self._last_atoms = None
-
-    #Helper functions
-    def load_checkpoint(self,path):
-        if path is not None:
-            checkpoint = torch.load(path)
-            return checkpoint
-
 
     def get_indices(self, atoms,device='cpu'):
         # Number of atoms
@@ -157,6 +153,7 @@ class PhysNetCalculator(Calculator):
                 idx_j = torch.concat(
                     [idx_j, torch.roll(idx, int(-Na_tmp.numpy()), dims=0)],
                     dim=0)
+        idx_i = torch.sort(idx_i)[0]
 
         return idx_i.to(device), idx_j.to(device)
 
@@ -190,14 +187,14 @@ class PhysNetCalculator(Calculator):
         # Only one NN
         with torch.no_grad():
             self.model.eval()
-            out1 = self.model.energy(self.Z, self.R, idx_i, idx_j, Q_tot=self.Q_tot, batch_seg=None,
+            self._last_energy, lambdas, alpha, beta  = self.model.energy_evidential(self.Z, self.R, idx_i, idx_j, Q_tot=self.Q_tot, batch_seg=None,
                                             offsets=offsets, sr_idx_i=sr_idx_i, sr_idx_j=sr_idx_j,
                                             sr_offsets=sr_offsets)
-            evi_out = evidential(out1)
+            # evi_out = evidential(out1)
 
-            self._last_energy, lambdas, alpha, beta = torch.split(evi_out,
-                                                                         evi_out.shape[1]//4,
-                                                                         dim=1)
+            # self._last_energy, lambdas, alpha, beta = torch.split(out1,
+            #                                                              out1.shape[1]//4,
+            #                                                              dim=1)
             self._sigma2 = beta/(alpha-1)
             self._var = (1/lambdas)*self.sigma2
 
