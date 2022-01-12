@@ -112,6 +112,7 @@ class PhysNetCalculator(Calculator):
             s8=args.grimme_s8,
             a1=args.grimme_a1,
             a2=args.grimme_a2,
+            writer=False,
             activation_fn="shift_softplus",
             device=args.device)
 

@@ -128,13 +128,8 @@ class PhysNet(nn.Module):
         self.embeddings = nn.Parameter(torch.Tensor(95, self.F,device=self.device).uniform_(-np.sqrt(3), np.sqrt(3)).requires_grad_(True))
 
         # torch.histogram(self.embeddings)
-        if writer is None:
-            self.writer = SummaryWriter()
-        elif writer == False:
-            pass
-        else:
-            self.writer = writer
-        self.writer.add_histogram("embeddings", self.embeddings, 0)
+
+
 
         # Initialize the radial basis functions
         self.rbf_layer = RBFLayer(K, sr_cut,device=self.device)
@@ -145,28 +140,40 @@ class PhysNet(nn.Module):
                 torch.tensor(softplus_inverse(d3_s6), requires_grad=True, dtype=dtype, device=self.device)))
         else:
             self.s6 = torch.tensor(s6, requires_grad=False, dtype=dtype, device=self.device)
-        self.writer.add_scalar("d3-s6", self.s6)
+
 
         if s8 is None:
             self.s8 = nn.Parameter(fnc.softplus(
                 torch.tensor(softplus_inverse(d3_s8), requires_grad=True, dtype=dtype, device=self.device)))
         else:
             self.s8 = torch.tensor(s8, requires_grad=False, dtype=dtype, device=self.device)
-        self.writer.add_scalar("d3-s8", self.s8)
+
 
         if a1 is None:
             self.a1 = nn.Parameter(fnc.softplus(
                 torch.tensor(softplus_inverse(d3_a1), requires_grad=True, dtype=dtype, device=self.device)))
         else:
             self.a1 = torch.tensor(a1, requires_grad=False, dtype=dtype, device=self.device)
-        self.writer.add_scalar("d3-a1", self.a1)
+
 
         if a2 is None:
             self.a2 = nn.Parameter(fnc.softplus(
                 torch.tensor(softplus_inverse(d3_a2), requires_grad=True, dtype=dtype, device=self.device)))
         else:
             self.a2 = torch.tensor(a2, requires_grad=False, dtype=dtype, device=self.device)
-        self.writer.add_scalar("d3-a2", self.a2)
+
+
+        if writer is None:
+            self.writer = SummaryWriter()
+        elif writer == False:
+            pass
+        else:
+            self.writer = writer
+            self.writer.add_histogram("embeddings", self.embeddings, 0)
+            self.writer.add_scalar("d3-s6", self.s6)
+            self.writer.add_scalar("d3-s8", self.s8)
+            self.writer.add_scalar("d3-a1", self.a1)
+            self.writer.add_scalar("d3-a2", self.a2)
 
         # Initialize output scale/shift variables
         self.Eshift = torch.empty(95,device=self.device).new_full((95,), Eshift).type(dtype)
@@ -250,14 +257,17 @@ class PhysNet(nn.Module):
             lastout2 = out2
 
             # Apply scaling/shifting
-            Ea = self.Escale[Z.type(torch.int64)] * Ea \
-                 + self.Eshift[Z.type(torch.int64)]
-            Ea.requires_grad_(True)
+        Ea = self.Escale[Z.type(torch.int64)] * Ea \
+            + self.Eshift[Z.type(torch.int64)]
+
             # + 0*tf.reduce_sum(R, -1))
             # Last term necessary to guarantee no "None" in force evaluation
-            Qa = self.Qscale[Z.type(torch.int64)] * Qa \
-                 + self.Qshift[Z.type(torch.int64)]
-            Qa.requires_grad_(True)
+        Qa = self.Qscale[Z.type(torch.int64)] * Qa \
+            + self.Qshift[Z.type(torch.int64)]
+
+        lambdas = self.Escale[Z.type(torch.int64)] * lambdas + self.Eshift[Z.type(torch.int64)]
+        alpha = self.Escale[Z.type(torch.int64)]* alpha + self.Eshift[Z.type(torch.int64)]
+        beta = self.Escale[Z.type(torch.int64)] * beta + self.Eshift[Z.type(torch.int64)]
 
         return Ea,lambdas, alpha, beta, Qa, Dij_lr, nhloss
 
@@ -304,12 +314,12 @@ class PhysNet(nn.Module):
         # Apply scaling/shifting
         Ea = self.Escale[Z.type(torch.int64)] * Ea \
              + self.Eshift[Z.type(torch.int64)]
-        Ea.requires_grad_(True)
+
         # + 0*tf.reduce_sum(R, -1))
         # Last term necessary to guarantee no "None" in force evaluation
         Qa = self.Qscale[Z.type(torch.int64)] * Qa \
                  + self.Qshift[Z.type(torch.int64)]
-        Qa.requires_grad_(True)
+
 
         return Ea, Qa, Dij_lr, nhloss
 
@@ -334,7 +344,6 @@ class PhysNet(nn.Module):
             else:
                 Ea = Ea + d3_autoev * edisp(Z, Dij / d3_autoang, idx_i, idx_j,
                                             s6=self.s6, s8=self.s8, a1=self.a1, a2=self.a2,device=self.device)
-        #TODO: Check segement sum
         Ea = torch.squeeze(segment_sum(Ea,batch_seg))
         lambdas = torch.squeeze(segment_sum(lambdas,batch_seg))
         alpha = torch.squeeze(segment_sum(alpha,batch_seg))
