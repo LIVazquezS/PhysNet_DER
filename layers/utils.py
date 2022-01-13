@@ -3,7 +3,7 @@
 import torch
 
 
-def segment_sum(data, segment_ids):
+def segment_sum(data, segment_ids,device='cpu'):
     """
     Analogous to tf.segment_sum (https://www.tensorflow.org/api_docs/python/tf/math/segment_sum).
 
@@ -21,10 +21,10 @@ def segment_sum(data, segment_ids):
         raise AssertionError("segment_ids should be the same size as dimension 0 of input.")
 
     num_segments = len(torch.unique(segment_ids))
-    return unsorted_segment_sum(data, segment_ids, num_segments)
+    return unsorted_segment_sum(data, segment_ids, num_segments,device=device)
 
 
-def unsorted_segment_sum(data, segment_ids, num_segments):
+def unsorted_segment_sum(data, segment_ids, num_segments,device='cpu'):
     """
     Computes the sum along segments of a tensor. Analogous to tf.unsorted_segment_sum.
 
@@ -37,12 +37,12 @@ def unsorted_segment_sum(data, segment_ids, num_segments):
 
     # segment_ids is a 1-D tensor repeat it to have the same shape as data
     if len(segment_ids.shape) == 1:
-        s = torch.prod(torch.tensor(data.shape[1:])).long()
-        segment_ids = segment_ids.repeat_interleave(s).view(segment_ids.shape[0], *data.shape[1:])
+        s = torch.prod(torch.tensor(data.shape[1:])).long().to(device)
+        segment_ids = segment_ids.repeat_interleave(s).view(segment_ids.shape[0], *data.shape[1:]).to(device)
 
     assert data.shape == segment_ids.shape, "data.shape and segment_ids.shape should be equal"
 
     shape = [num_segments] + list(data.shape[1:])
-    tensor = torch.zeros(*shape).scatter_add(0, segment_ids, data.float())
-    tensor = tensor.type(data.dtype)
+    tensor = torch.zeros(*shape,device=device).scatter_add(0, segment_ids, data)
+    # tensor = tensor.type(data.dtype)
     return tensor

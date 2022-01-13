@@ -125,12 +125,9 @@ class PhysNet(nn.Module):
             self.device ="cpu"
 
         # Atom embeddings (we go up to Pu(94): 95 - 1 ( for index 0))
-        self.embeddings = nn.Parameter(torch.Tensor(95, self.F,device=self.device).uniform_(-np.sqrt(3), np.sqrt(3)).requires_grad_(True))
+        self.embeddings = nn.Parameter(torch.empty(95, self.F,device=self.device).uniform_(-np.sqrt(3), np.sqrt(3)).requires_grad_(True))
 
         # torch.histogram(self.embeddings)
-
-
-
         # Initialize the radial basis functions
         self.rbf_layer = RBFLayer(K, sr_cut,device=self.device)
         # Initialize variables for d3 dispersion (the way this is done,
@@ -218,7 +215,7 @@ class PhysNet(nn.Module):
                     sr_offsets=None):
         ''' Calculate evidential atomic properties '''
 
-            # Calculate distances (for long range interaction)
+        # Calculate distances (for long range interaction)
         Dij_lr = self.calculate_interatomic_distances(R, idx_i, idx_j, offsets=offsets)
         # Optionally, it is possible to calculate separate distances
         # for short range interactions (computational efficiency)
@@ -344,10 +341,10 @@ class PhysNet(nn.Module):
             else:
                 Ea = Ea + d3_autoev * edisp(Z, Dij / d3_autoang, idx_i, idx_j,
                                             s6=self.s6, s8=self.s8, a1=self.a1, a2=self.a2,device=self.device)
-        Ea = torch.squeeze(segment_sum(Ea,batch_seg))
-        lambdas = torch.squeeze(segment_sum(lambdas,batch_seg))
-        alpha = torch.squeeze(segment_sum(alpha,batch_seg))
-        beta = torch.squeeze(segment_sum(beta,batch_seg))
+        Ea = torch.squeeze(segment_sum(Ea,batch_seg,device=self.device))
+        lambdas = torch.squeeze(segment_sum(lambdas,batch_seg,device=self.device))
+        alpha = torch.squeeze(segment_sum(alpha,batch_seg,device=self.device))
+        beta = torch.squeeze(segment_sum(beta,batch_seg,device=self.device))
         return Ea,lambdas,alpha,beta
 
     @torch.jit.export
@@ -370,7 +367,7 @@ class PhysNet(nn.Module):
                 Ea = Ea + d3_autoev * edisp(Z, Dij / d3_autoang, idx_i, idx_j,
                                             s6=self.s6, s8=self.s8, a1=self.a1, a2=self.a2,device=self.device)
 
-        Ea = torch.squeeze(segment_sum(Ea,batch_seg))
+        Ea = torch.squeeze(segment_sum(Ea,batch_seg,device=self.device))
         return Ea
 
     @torch.jit.export
@@ -569,7 +566,7 @@ class PhysNet(nn.Module):
 
         # Number of atoms per batch (needed for charge scaling)
         Na_helper = torch.ones_like(batch_seg, dtype=self.dtype)
-        Na_per_batch = segment_sum(Na_helper,batch_seg.type(torch.int64))
+        Na_per_batch = segment_sum(Na_helper,batch_seg.type(torch.int64),device=self.device)
 
         # Na_per_batch = segment_coo(torch.ones_like(batch_seg, dtype=self.dtype),
         #                        index=batch_seg.type(torch.int64),reduce="sum")
@@ -578,7 +575,7 @@ class PhysNet(nn.Module):
             Q_tot = torch.zeros_like(Na_per_batch, dtype=self.dtype)
 
         # Return scaled charges (such that they have the desired total charge)
-        Q_correct = Q_tot - segment_sum(Qa,batch_seg.type(torch.int64))
+        Q_correct = Q_tot - segment_sum(Qa,batch_seg.type(torch.int64),device=self.device)
         Q_scaled = Qa + torch.gather((Q_correct / Na_per_batch), 0, batch_seg.type(torch.int64))
 
         return Q_scaled
@@ -634,7 +631,7 @@ class PhysNet(nn.Module):
                     cswitch * Eele_shielded + switch * Eele_ordinary)
             Eele = torch.where(Dij <= cut, Eele, torch.zeros_like(Eele))
 
-        Eele_f = segment_sum(Eele,idx_i)
+        Eele_f = segment_sum(Eele,idx_i,device=self.device)
 
         return Eele_f
 

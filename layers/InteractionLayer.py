@@ -48,7 +48,7 @@ class InteractionLayer(nn.Module):
         xi = self.dense_i(xa)
         # TODO: Change this to gather because is faster on gpu
         pxj = g * self.dense_j(xa)[idx_j.type(torch.int64)]
-        xj = segment_sum(pxj,idx_i.type(torch.int64))
+        xj = segment_sum(pxj,idx_i.type(torch.int64),device=self.device)
         # xj = torch.zeros(xi.shape,device=self.device).index_add(0, idx_i.type(torch.int64), pxj)
         # xjp = xj.clone()
         # Do the sum of messages

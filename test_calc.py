@@ -77,28 +77,66 @@ model.load_state_dict(checkpoint['model_state_dict'])
 model.eval()
 
 
-
-
-def get_indices(atoms, device='cpu'):
-    # Number of atoms
-    N = len(atoms)
-
+def get_indices(Nref,device='cpu'):
     # Indices pointing to atom at each batch image
-    idx = torch.arange(end=N, dtype=torch.int32).to(device)
+    idx = torch.arange(end=Nref.item(), dtype=torch.int32).to(device)
     # Indices for atom pairs ij - Atom i
-    idx_i = idx.repeat(int(N) - 1)
+    Nref_tot = torch.tensor(0, dtype=torch.int32).to(device)
+    Ntmp = Nref.cpu()
+    idx_i = idx.repeat(int(Ntmp.numpy()) - 1) + Nref_tot
     # Indices for atom pairs ij - Atom j
-    idx_j = torch.roll(idx, -1, dims=0)
+    idx_j = torch.roll(idx, -1, dims=0) + Nref_tot
+    for Na in torch.arange(2, Nref.item()):
+        Na_tmp = Na.cpu()
+        idx_j = torch.concat(
+            [idx_j, torch.roll(idx, int(-Na_tmp.numpy()), dims=0) + Nref_tot],
+            dim=0)
+
+    # Increment auxiliary parameter
+    Nref_tot = Nref_tot + Nref.item()
 
     idx_i = torch.sort(idx_i)[0]
-    if N >= 2:
-        for Na in torch.arange(2, N):
+    # Complete indices arrays
+    for Nref_a in Nref:
+
+        rng_a = torch.arange(end=Nref_a).to(device)
+        Nref_a_tmp = Nref_a.cpu()
+        idx = torch.concat([idx, rng_a], axis=0)
+        idx_i = torch.concat(
+            [idx_i, rng_a.repeat(int(Nref_a_tmp.numpy()) - 1) + Nref_tot],
+            dim=0)
+        for Na in torch.arange(1, Nref_a):
             Na_tmp = Na.cpu()
             idx_j = torch.concat(
-                [idx_j, torch.roll(idx, int(-Na_tmp.numpy()), dims=0)],
+                [idx_j, torch.roll(rng_a, int(-Na_tmp.numpy()), dims=0) + Nref_tot],
                 dim=0)
 
-    return idx_i.to(device), idx_j.to(device)
+        # Increment auxiliary parameter
+        Nref_tot = Nref_tot + Nref_a
+
+    # Combine indices for batch image and respective atoms
+    idx = torch.stack([batch_seg, idx], dim=1)
+    return idx.type(torch.int64), idx_i.type(torch.int64), idx_j.type(torch.int64)
+
+# def get_indices(atoms, device='cpu'):
+#     # Number of atoms
+#     N = len(atoms)
+#
+#     # Indices pointing to atom at each batch image
+#     idx = torch.arange(end=N, dtype=torch.int32).to(device)
+#     # Indices for atom pairs ij - Atom i
+#     idx_i = idx.repeat(int(N) - 1)
+#     # Indices for atom pairs ij - Atom j
+#     idx_j = torch.roll(idx, -1, dims=0)
+#
+#     if N >= 2:
+#         for Na in torch.arange(2, N):
+#             Na_tmp = Na.cpu()
+#             idx_j = torch.concat(
+#                 [idx_j, torch.roll(idx, int(-Na_tmp.numpy()), dims=0)],
+#                 dim=0)
+#
+#     return idx_i.to(device), idx_j.to(device)
 
 
 file = 'a_395.xyz'
@@ -107,7 +145,8 @@ atoms = read(file)
 
 Z = torch.tensor(atoms.get_atomic_numbers(),dtype=torch.int32,device=args.device)
 R = torch.tensor(atoms.get_positions(),dtype=torch.float32,device=args.device)
-idx_i, idx_j = get_indices(atoms, device=args.device)
+N = torch.tensor(len(atoms),dtype=torch.int32,device=args.device)
+idx,idx_i, idx_j = get_indices(N, device=args.device)
 # print('idx_i',torch.sort(idx_i)[0])
 # print('idx_i shape', idx_i.shape)
 # print('idx_j',idx_j)

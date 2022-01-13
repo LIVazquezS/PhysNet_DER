@@ -290,7 +290,7 @@ model = PhysNet(
     activation_fn="shift_softplus",
     device=args.device,
     writer=summary_writer)
-
+print(args.device)
 # ------------------------------------------------------------------------------
 # Train PhysNet model
 # ------------------------------------------------------------------------------

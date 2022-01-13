@@ -9,6 +9,41 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="vazquez@pc-studix0.chemie.unibas.ch:22 password (1)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/vazquez/PhysNet_Evidential" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="vazquez@pc-studix0.chemie.unibas.ch:22 password (2)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/vazquez/PhysNet_Evidential" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="vazquez@pc-studix0.chemie.unibas.ch:22 password (3)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/vazquez/PhysNet_Evidential" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="vazquez@pc-studix0.chemie.unibas.ch:22 password (4)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/vazquez/PhysNet_Evidential" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="vazquez@pc-studix0.chemie.unibas.ch:22 password (5)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/vazquez/PhysNet_Evidential" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
     </serverData>
     <option name="myAutoUpload" value="ALWAYS" />
   </component>
