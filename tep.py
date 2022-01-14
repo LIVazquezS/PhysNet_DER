@@ -216,7 +216,7 @@ def predict(model,batch,num_v,device):
     # These are BOTH variances
     # c = (scaler2 * c)
     # var = (scaler2 * var)
-    Eref_v = Eref_v.detach().numpy()
+    Eref_v = Eref_v.detach().cpu().numpy()
     Error_v = np.mean(np.abs(p - Eref_v))
     num_v = num_v + N_v.dim()
     return num_v,loss, p, c, var, Error_v
