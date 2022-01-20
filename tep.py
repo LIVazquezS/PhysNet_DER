@@ -194,7 +194,7 @@ def predict(model,batch,num_v,device):
     p = preds[:,0]
     c = 1 /((preds[:,2]-1)*preds[:,1])
     var = preds[:,3]*c
-    Eref_v = Eref_v.detach().numpy()
+    Eref_v = Eref_v.detach().cpu().numpy()
     Error_v = np.mean(np.abs(p - Eref_v))
     num_v = num_v + N_v.dim()
     return num_v,loss, p, c, var, Error_v
