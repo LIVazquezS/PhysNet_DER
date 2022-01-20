@@ -22,7 +22,7 @@ atoms = read(args.input)
 
 #setup calculator (which will be used to describe the atomic interactions)
 calc = PhysNetCalculator(
-    checkpoint="20220112114214_JWKYqj5Y_F128K64b5a2i3o1cut10.0e0d0rate0.0/best/best_model.pt",
+    checkpoint="20220120143205_IVYoKRV6_F128K64b5a2i3o1cut10.0e0d0rate0.0/best/best_model.pt",
     atoms=atoms,
     charge=args.charge,
     config='input1.inp')

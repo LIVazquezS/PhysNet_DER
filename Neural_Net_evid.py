@@ -252,7 +252,6 @@ class PhysNet(nn.Module):
             if i > 0:
                 nhloss = nhloss + torch.mean(out2 / (out2 + lastout2 + 1e-7))
             lastout2 = out2
-
             # Apply scaling/shifting
         Ea = self.Escale[Z.type(torch.int64)] * Ea \
             + self.Eshift[Z.type(torch.int64)]
@@ -341,10 +340,10 @@ class PhysNet(nn.Module):
             else:
                 Ea = Ea + d3_autoev * edisp(Z, Dij / d3_autoang, idx_i, idx_j,
                                             s6=self.s6, s8=self.s8, a1=self.a1, a2=self.a2,device=self.device)
-        Ea = torch.squeeze(segment_sum(Ea,batch_seg,device=self.device))
-        lambdas = torch.squeeze(segment_sum(lambdas,batch_seg,device=self.device))
-        alpha = torch.squeeze(segment_sum(alpha,batch_seg,device=self.device))
-        beta = torch.squeeze(segment_sum(beta,batch_seg,device=self.device))
+        Ea = segment_sum(Ea,batch_seg,device=self.device)
+        lambdas = segment_sum(lambdas,batch_seg,device=self.device)
+        alpha = segment_sum(alpha,batch_seg,device=self.device)
+        beta = segment_sum(beta,batch_seg,device=self.device)
         return Ea,lambdas,alpha,beta
 
     @torch.jit.export
@@ -422,7 +421,7 @@ class PhysNet(nn.Module):
         if batch_seg is None:
             batch_seg = torch.zeros_like(Z).type(torch.int64)
 
-            # Scale charges such that they have the desired total charge
+        # Scale charges such that they have the desired total charge
         Qa = self.scaled_charges(Z, Qa, Q_tot, batch_seg)
 
         return self.energy_from_scaled_atomic_properties(
@@ -453,13 +452,12 @@ class PhysNet(nn.Module):
         return energy, forces
 
     @torch.jit.export
-    def energy_evidential(self, Z, R, idx_i, idx_j, Q_tot=None, batch_seg=None, offsets=None,
+    def energy_evidential(self, Z, R, idx_i, idx_j, Q_tot=None,batch_seg=None, offsets=None,
             sr_idx_i=None, sr_idx_j=None, sr_offsets=None):
         ''' Calculates the total energy (including electrostatic
             interactions) '''
         Ea, lambdas, alpha, beta, Qa, Dij, _ = self.evidential_atomic_properties(
             Z, R, idx_i, idx_j, offsets, sr_idx_i, sr_idx_j, sr_offsets)
-
         energy, lambdas, alpha, beta = self.energy_evidential_from_atomic_properties(
             Ea, lambdas, alpha, beta, Qa, Dij, Z, idx_i, idx_j, Q_tot, batch_seg)
 

@@ -17,9 +17,10 @@ from Neural_Net_evid import PhysNet
 # from neural_network.activation_fn import *
 from Neural_Net_evid import gather_nd
 from DataContainer import DataContainer
+from layers.utils import segment_sum
 from utils import get_metric_func
-data_tot = DataContainer('data/sn2_reactions.npz', 362167, 45000,
-    100, 20, 0)
+data_tot = DataContainer('data/qm9_1000.npz', 1000, 100,
+    10, 20, 0)
 from tep import train
 # assert torch.cuda.is_available()
 # cuda_device = torch.device("cuda")
@@ -71,10 +72,10 @@ def get_indices(Nref,device='cpu'):
 
         # Increment auxiliary parameter
         Nref_tot = Nref_tot + Nref_a
-
+    idx_i = torch.sort(idx_i)[0]
     # Combine indices for batch image and respective atoms
     idx = torch.stack([batch_seg, idx], dim=1)
-    return idx, idx_i, idx_j, batch_seg
+    return idx.type(torch.int64), idx_i.type(torch.int64), idx_j.type(torch.int64), batch_seg.type(torch.int64)
 
 def calculate_interatomic_distances(R, idx_i, idx_j, offsets=None):
     ''' Calculate interatomic distances '''
@@ -220,34 +221,55 @@ def predict(batch):
 # Evaluation
 #------------------------------------
 
-def evaluate_predictions(preds, targets, metric_func='rmse'):
-    m_func = get_metric_func(metric_func)
-    results = m_func(targets, preds)
-    return results
-
-def evaluate(data,metric_func='rmse'):
-    preds,c,var,targets= predict(batch=data)
-
-    results = evaluate_predictions(
-        preds=preds,
-        targets=targets,
-        metric_func=metric_func)
-    return results
-#You have to reduce the learning rate....
-optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-4,
-                             weight_decay=0.1, amsgrad=True)
-
-lr_schedule = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=1.0)
-valid_batches = data_tot.get_valid_batches()
-
-# for ib,batch in enumerate(valid_batches):
-#     x = evaluate(batch)
-#     print(x)
-# # Actual Train
+# def evaluate_predictions(preds, targets, metric_func='rmse'):
+#     m_func = get_metric_func(metric_func)
+#     results = m_func(targets, preds)
+#     return results
+#
+# def evaluate(data,metric_func='rmse'):
+#     preds,c,var,targets= predict(batch=data)
+#
+#     results = evaluate_predictions(
+#         preds=preds,
+#         targets=targets,
+#         metric_func=metric_func)
+#     return results
+# #You have to reduce the learning rate....
+# optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-4,
+#                              weight_decay=0.1, amsgrad=True)
+#
+# lr_schedule = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=1.0)
+# valid_batches = data_tot.get_valid_batches()
+#
+# # for ib,batch in enumerate(valid_batches):
+# #     x = evaluate(batch)
+# #     print(x)
+# # # Actual Train
 for ib,batch in enumerate(train_batches):
-    loss, mae_energy, pnorm, gnorm = train(model,batch)
-    optimizer.step()
-    print(loss,mae_energy,pnorm,gnorm)
+    N_t, Z_t, R_t, Eref_t, Earef_t, Fref_t, Qref_t, Qaref_t, Dref_t = batch
+        #     # Get indices
+    idx_t, idx_i_t, idx_j_t, batch_seg_t = get_indices(N_t)
+
+        # Gather data
+    Z_t = gather_nd(Z_t, idx_t)
+    R_t = gather_nd(R_t, idx_t)
+
+
+    # model.zero_grad()
+    out = model.evidential_atomic_properties(Z_t,R_t,idx_i_t,idx_j_t)
+    q = segment_sum(out[0],batch_seg_t)
+    print(q)
+    # p = evidential(out)
+    # print(p)
+    # # TODO  Here the view should be change to consider the size of the batch
+
+    # loss = evidential_loss(p[:, 0], p[:, 1], p[:, 2], p[:, 3], Eref_t).view(100, 1)
+    # loss = loss.sum() / len(Z_t)
+
+
+    # loss, mae_energy, pnorm, gnorm = train(model,batch)
+    # optimizer.step()
+    # print(loss,mae_energy,pnorm,gnorm)
 
 
 

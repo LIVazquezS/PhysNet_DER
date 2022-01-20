@@ -21,6 +21,7 @@ from DataContainer import DataContainer
 #Other importations
 import functools
 from tep import train, predict
+from utils import NoamLR
 # Configure logging environment
 logging.basicConfig(filename='train.log', level=logging.DEBUG)
 
@@ -290,7 +291,7 @@ model = PhysNet(
     activation_fn="shift_softplus",
     device=args.device,
     writer=summary_writer)
-print(args.device)
+
 # ------------------------------------------------------------------------------
 # Train PhysNet model
 # ------------------------------------------------------------------------------
@@ -303,6 +304,11 @@ optimizer = torch.optim.Adam(params=model.parameters(), lr=args.learning_rate,
                              weight_decay=args.l2lambda, amsgrad=True)
 
 lr_schedule = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.decay_rate)
+# lr_schedule = NoamLR(optimizer=optimizer,warmup_epochs=0.1*args.max_steps,total_epochs=args.max_steps,
+#                      steps_per_epoch=args.num_train // args.batch_size,
+#                      init_lr=[0.01],
+#                      max_lr=[0.002],
+#                      final_lr=[0.001])
 
 # Define Exponential Moving Average
 
@@ -358,6 +364,7 @@ while epoch <= args.max_steps:
         num_t,loss_ev_t, emae_t, pnorm_t, gnorm_t = train(model, batch,num_t,device=args.device,maxnorm=args.max_norm)
 
         optimizer.step()
+        lr_schedule.step()
         ema.update()
         # Stop batch timer
         batch_end = time()

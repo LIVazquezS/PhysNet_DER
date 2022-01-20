@@ -153,9 +153,7 @@ def train(model,batch,num_t,device,maxnorm=1000):
 
     p = evidential(out)
     mae_energy = torch.mean(torch.abs(p[:,0] - Eref_t))
-
-    loss = evidential_loss(p[:, 0], p[:, 1], p[:, 2], p[:, 3], Eref_t).view(len(N_t), 1)
-    loss = loss.sum() / len(N_t)
+    loss = evidential_loss(p[:, 0], p[:, 1], p[:, 2], p[:, 3], Eref_t).sum()
     loss.backward(retain_graph=True)
     # #Gradient clip
     nn.utils.clip_grad_norm_(model.parameters(),maxnorm)
@@ -191,31 +189,11 @@ def predict(model,batch,num_v,device):
     # loss
     preds = preds_b
 
-    loss = evidential_loss(preds[:, 0], preds[:, 1], preds[:, 2], preds[:, 3], Eref_v).view(len(N_v), 1)
-    loss = loss.sum() / len(N_v)
-
+    loss = evidential_loss(preds[:, 0], preds[:, 1], preds[:, 2], preds[:, 3], Eref_v).sum()
     preds = preds.cpu().detach().numpy()
-    p = []
-    c = []
-    var = []
-    for i in range(len(preds)):
-        # Switching to chemprop implementation
-        means = np.array([preds[i][j] for j in range(len(preds[i])) if j % 4 == 0])
-        lambdas = np.array([preds[i][j] for j in range(len(preds[i])) if j % 4 == 1])
-        alphas = np.array([preds[i][j] for j in range(len(preds[i])) if j % 4 == 2])
-        betas = np.array([preds[i][j] for j in range(len(preds[i])) if j % 4 == 3])
-    #     # means, lambdas, alphas, betas = np.split(np.array(preds[i]), 4)
-        inverse_evidence = 1. / ((alphas - 1) * lambdas)
-
-        p.append(means[0])
-    #     # NOTE: inverse-evidence (ie. 1/evidence) is also a measure of
-    #     # confidence. we can use this or the Var[X] defined by NIG.
-        c.append(inverse_evidence[0])
-        var.append(betas[0] * inverse_evidence[0])
-        # c.append(betas / ((alphas-1) * lambdas))
-    # These are BOTH variances
-    # c = (scaler2 * c)
-    # var = (scaler2 * var)
+    p = preds[:,0]
+    c = 1 /((preds[:,2]-1)*preds[:,1])
+    var = preds[:,3]*c
     Eref_v = Eref_v.detach().numpy()
     Error_v = np.mean(np.abs(p - Eref_v))
     num_v = num_v + N_v.dim()

@@ -140,7 +140,6 @@ class PhysNetCalculator(Calculator):
     def get_indices(self, atoms,device='cpu'):
         # Number of atoms
         N = len(atoms)
-
         # Indices pointing to atom at each batch image
         idx = torch.arange(end=N,dtype=torch.int32).to(device)
         # Indices for atom pairs ij - Atom i
@@ -155,7 +154,6 @@ class PhysNetCalculator(Calculator):
                     [idx_j, torch.roll(idx, int(-Na_tmp.numpy()), dims=0)],
                     dim=0)
         idx_i = torch.sort(idx_i)[0]
-
         return idx_i.to(device), idx_j.to(device)
 
     def calculation_required(self, atoms):
@@ -188,7 +186,7 @@ class PhysNetCalculator(Calculator):
         # Only one NN
         with torch.no_grad():
             self.model.eval()
-            self._last_energy, lambdas, alpha, beta  = self.model.energy_evidential(self.Z, self.R, idx_i, idx_j, Q_tot=self.Q_tot, batch_seg=None,
+            self._last_energy, lambdas, alpha, beta = self.model.energy_evidential(self.Z, self.R, idx_i, idx_j, Q_tot=self.Q_tot, batch_seg=None,
                                             offsets=offsets, sr_idx_i=sr_idx_i, sr_idx_j=sr_idx_j,
                                             sr_offsets=sr_offsets)
             # evi_out = evidential(out1)

@@ -16,9 +16,10 @@ from layers.RBFLayer import RBFLayer
 from layers.InteractionBlock import InteractionBlock
 from layers.OutputBlock import OutputBlock
 from NeuralNet import gather_nd
+from layers.utils import segment_sum
 
-data_tot = DataContainer('data/sn2_reactions.npz', 362167, 45000,
-    100, 20, 0)
+data_tot = DataContainer('data/qm9_1000.npz',800, 100,
+    10, 20, 0)
 
 # assert torch.cuda.is_available()
 # cuda_device = torch.device("cuda")
@@ -192,84 +193,87 @@ for ib,batch in enumerate(train_batches):
     N_t, Z_t, R_t, Eref_t, Earef_t, Fref_t, Qref_t, Qaref_t, Dref_t = batch
 #     # Get indices
     idx_t, idx_i_t, idx_j_t, batch_seg_t = get_indices(N_t)
+    out = model.energy_evidential(Z_t, R_t, idx_i_t, idx_j_t, Qref_t, batch_seg_t)
+    p = evidential(out)
+    print(p)
 
  # Gather data
-    Z_t = gather_nd(Z_t, idx_t)
-    R_t = gather_nd(R_t, idx_t)
-
-    if torch.count_nonzero(Earef_t) != 0:
-        Earef_t = gather_nd(Earef_t, idx_t)
-    if torch.count_nonzero(Fref_t) != 0:
-        Fref_t = gather_nd(Fref_t, idx_t)
-    if torch.count_nonzero(Qaref_t) != 0:
-        Qaref_t = gather_nd(Qaref_t, idx_t)
-
-    Dij_lr = calculate_interatomic_distances(R_t, idx_i_t, idx_j_t)
-
-
-    # Calculate radial basis function expansion
-    rbf = rbf_layer(Dij_lr)
-
-    # Initialize feature vectors according to embeddings for
-    # nuclear charges
-    z_pros = Z_t.view(-1, 1).expand(-1, 128).type(torch.int64)
-    x = torch.gather(embeddings, 0, z_pros)
-    # Apply blocks
-    Ea = 0  # atomic energy
-    Qa = 0  # atomic charge
-    lambdas, alpha, beta = 0, 0, 0
-    nhloss = 0  # non-hierarchicality loss
-    for i in range(num_blocks):
-        x = interaction_block[i](x, rbf, idx_i_t, idx_j_t)
-        out = output_block[i](x)
-        out_extra = output_block_evid[i](x)
-        Ea = Ea + out[:, 0]
-        Qa = Qa + out[:, 1]
-        lambdas = lambdas + out_extra[:, 0]
-        alpha = alpha + out_extra[:, 1]
-        beta = beta + out_extra[:, 2]
-
-
-    bs_u = len(torch.unique(batch_seg_t))
-    Ea = Ea.new_zeros(bs_u).index_add(0, batch_seg_t, Ea)
-    lambdas = lambdas.new_zeros(bs_u).index_add(0, batch_seg_t, lambdas)
-    alpha = alpha.new_zeros(bs_u).index_add(0, batch_seg_t, alpha)
-    beta = beta.new_zeros(bs_u).index_add(0, batch_seg_t, beta)
-
-    # Ea = torch.gather(Escale, 0, Z_t.type(torch.int64)) * Ea \
-    #         + torch.gather(Eshift, 0, Z_t.type(torch.int64))
-    # lambdas = torch.gather(Escale, 0, Z_t.type(torch.int64)) * lambdas
-    # alpha = torch.gather(Escale, 0, Z_t.type(torch.int64)) * alpha
-    # beta = torch.gather(Escale, 0, Z_t.type(torch.int64)) * beta
-    out_E = torch.stack([Ea, lambdas, alpha, beta])
-    E = evidential(out_E)
-
-    #
-    # mask = torch.Tensor([x is not None for x in Eref_t])
-    # # targets = torch.Tensor([[0 if x is None else x for x in tb] for tb in batch])
-    means = E[:, [j for j in range(len(E[0])) if j % 4 == 0]]
-    lambdas = E[:, [j for j in range(len(E[0])) if j % 4 == 1]]
-    alphas = E[:, [j for j in range(len(E[0])) if j % 4 == 2]]
-    betas = E[:, [j for j in range(len(E[0])) if j % 4 == 3]]
-    targets = Eref_t.view(100,1)
-    print('means',means)
-    print('lambdas',lambdas)
-    print('alphas',alphas)
-    print('betas',betas)
-    print('targets',targets)
-    # #
-    # #
-    # loss_sum = 0
-    optimizer.zero_grad()
-    loss = evidential_loss(means, lambdas, alphas, betas, Eref_t)
-    loss = loss.sum()/len(Eref_t)
-    #
-    # #
-    # # loss_sum += loss.item()
-    loss.backward(retain_graph=True)
-    optimizer.step()
-
-    print(loss)
+ #    Z_t = gather_nd(Z_t, idx_t)
+ #    R_t = gather_nd(R_t, idx_t)
+ #
+ #    if torch.count_nonzero(Earef_t) != 0:
+ #        Earef_t = gather_nd(Earef_t, idx_t)
+ #    if torch.count_nonzero(Fref_t) != 0:
+ #        Fref_t = gather_nd(Fref_t, idx_t)
+ #    if torch.count_nonzero(Qaref_t) != 0:
+ #        Qaref_t = gather_nd(Qaref_t, idx_t)
+ #
+ #    Dij_lr = calculate_interatomic_distances(R_t, idx_i_t, idx_j_t)
+ #
+ #
+ #    # Calculate radial basis function expansion
+ #    rbf = rbf_layer(Dij_lr)
+ #
+ #    # Initialize feature vectors according to embeddings for
+ #    # nuclear charges
+ #    z_pros = Z_t.view(-1, 1).expand(-1, 128).type(torch.int64)
+ #    x = torch.gather(embeddings, 0, z_pros)
+ #    # Apply blocks
+ #    Ea = 0  # atomic energy
+ #    Qa = 0  # atomic charge
+ #    lambdas, alpha, beta = 0, 0, 0
+ #    nhloss = 0  # non-hierarchicality loss
+ #    for i in range(num_blocks):
+ #        x = interaction_block[i](x, rbf, idx_i_t, idx_j_t)
+ #        out = output_block[i](x)
+ #        out_extra = output_block_evid[i](x)
+ #        Ea = Ea + out[:, 0]
+ #        Qa = Qa + out[:, 1]
+ #        lambdas = lambdas + out_extra[:, 0]
+ #        alpha = alpha + out_extra[:, 1]
+ #        beta = beta + out_extra[:, 2]
+ #
+ #
+ #    bs_u = len(torch.unique(batch_seg_t))
+ #    Ea = Ea.new_zeros(bs_u).index_add(0, batch_seg_t, Ea)
+ #    lambdas = lambdas.new_zeros(bs_u).index_add(0, batch_seg_t, lambdas)
+ #    alpha = alpha.new_zeros(bs_u).index_add(0, batch_seg_t, alpha)
+ #    beta = beta.new_zeros(bs_u).index_add(0, batch_seg_t, beta)
+ #
+ #    # Ea = torch.gather(Escale, 0, Z_t.type(torch.int64)) * Ea \
+ #    #         + torch.gather(Eshift, 0, Z_t.type(torch.int64))
+ #    # lambdas = torch.gather(Escale, 0, Z_t.type(torch.int64)) * lambdas
+ #    # alpha = torch.gather(Escale, 0, Z_t.type(torch.int64)) * alpha
+ #    # beta = torch.gather(Escale, 0, Z_t.type(torch.int64)) * beta
+ #    out_E = torch.stack([Ea, lambdas, alpha, beta])
+ #    E = evidential(out_E)
+ #
+ #    #
+ #    # mask = torch.Tensor([x is not None for x in Eref_t])
+ #    # # targets = torch.Tensor([[0 if x is None else x for x in tb] for tb in batch])
+ #    means = E[:, [j for j in range(len(E[0])) if j % 4 == 0]]
+ #    lambdas = E[:, [j for j in range(len(E[0])) if j % 4 == 1]]
+ #    alphas = E[:, [j for j in range(len(E[0])) if j % 4 == 2]]
+ #    betas = E[:, [j for j in range(len(E[0])) if j % 4 == 3]]
+ #    targets = Eref_t.view(100,1)
+ #    print('means',means)
+ #    print('lambdas',lambdas)
+ #    print('alphas',alphas)
+ #    print('betas',betas)
+ #    print('targets',targets)
+ #    # #
+ #    # #
+ #    # loss_sum = 0
+ #    optimizer.zero_grad()
+ #    loss = evidential_loss(means, lambdas, alphas, betas, Eref_t)
+ #    loss = loss.sum()/len(Eref_t)
+ #    #
+ #    # #
+ #    # # loss_sum += loss.item()
+ #    loss.backward(retain_graph=True)
+ #    optimizer.step()
+ #
+ #    print(loss)
 
         # #TODO: Find a better way to do this.
 
