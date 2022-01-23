@@ -184,12 +184,12 @@ class PhysNet(nn.Module):
             for _ in range(self.num_blocks)])
 
         self.output_block = nn.ModuleList([OutputBlock(
-            F, num_residual_output, activation_fn=activation_fn, rate=self.rate,device=self.device)
+            F, num_residual_output, n_output=4, activation_fn=activation_fn, rate=self.rate,device=self.device)
             for _ in range(self.num_blocks)])
 
-        self.output_block_evid = nn.ModuleList([OutputBlock(
-            F, num_residual_output, n_output=3, activation_fn=activation_fn, rate=self.rate,device=self.device)
-            for _ in range(self.num_blocks)])
+        # self.output_block_evid = nn.ModuleList([OutputBlock(
+        #     F, num_residual_output, n_output=3, activation_fn=activation_fn, rate=self.rate,device=self.device)
+        #     for _ in range(self.num_blocks)])
         # Save checkpoint to write/read the models variables
 
     def eval(self):
@@ -241,12 +241,13 @@ class PhysNet(nn.Module):
         for i in range(self.num_blocks):
             x = self.interaction_block[i](x, rbf, sr_idx_i, sr_idx_j)
             out = self.output_block[i](x)
-            out_extra = self.output_block_evid[i](x)
+            # print(out)
+            # out_extra = self.output_block_evid[i](x)
             Ea = Ea + out[:, 0]
-            Qa = Qa + out[:, 1]
-            lambdas = lambdas + out_extra[:, 0]
-            alpha = alpha + out_extra[:, 1]
-            beta = beta + out_extra[:, 2]
+            Qa = Qa + out[:, 4]
+            lambdas = lambdas + out[:, 1]
+            alpha = alpha + out[:, 2]
+            beta = beta + out[:, 3]
             # Compute non-hierarchicality loss
             out2 = out ** 2
             if i > 0:

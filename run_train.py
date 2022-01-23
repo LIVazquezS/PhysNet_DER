@@ -301,14 +301,15 @@ logging.info("starting training...")
 
 # Define Optimizer
 optimizer = torch.optim.Adam(params=model.parameters(), lr=args.learning_rate,
-                             weight_decay=args.l2lambda, amsgrad=True)
+                             weight_decay=args.l2lambda,amsgrad=True)
 
-lr_schedule = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.decay_rate)
-# lr_schedule = NoamLR(optimizer=optimizer,warmup_epochs=0.1*args.max_steps,total_epochs=args.max_steps,
-#                      steps_per_epoch=args.num_train // args.batch_size,
-#                      init_lr=[0.01],
-#                      max_lr=[0.002],
-#                      final_lr=[0.001])
+# lr_schedule = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.decay_rate)
+# lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,factor=args.decay_rate,patience=2,verbose=True)
+lr_schedule = NoamLR(optimizer=optimizer,warmup_epochs=[2.0],total_epochs=[args.max_steps],
+                     steps_per_epoch=args.num_train // args.batch_size,
+                     init_lr=[args.learning_rate],
+                     max_lr=[0.001],
+                     final_lr=[2*args.learning_rate])
 
 # Define Exponential Moving Average
 
@@ -361,10 +362,10 @@ while epoch <= args.max_steps:
                 length=42)
 
         # Training step
-        num_t,loss_ev_t, emae_t, pnorm_t, gnorm_t = train(model, batch,num_t,device=args.device,maxnorm=args.max_norm)
+        num_t,loss_ev_t, emae_t, pnorm_t, gnorm_t = train(model, optimizer,batch,num_t,device=args.device,maxnorm=args.max_norm)
 
         optimizer.step()
-        lr_schedule.step()
+
         ema.update()
         # Stop batch timer
         batch_end = time()
@@ -381,7 +382,7 @@ while epoch <= args.max_steps:
 
         # Increment step number
         step = step + 1
-
+    lr_schedule.step()
     # Stop train timer
     train_end = time()
     time_train = train_end - train_start

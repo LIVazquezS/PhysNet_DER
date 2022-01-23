@@ -93,7 +93,7 @@ def evidential(out):
 # Loss function
 #------------------------------------
 
-def evidential_loss(mu, v, alpha, beta, targets, lam=1, epsilon=1e-4):
+def evidential_loss_new(mu, v, alpha, beta, targets, lam=0.2, epsilon=1e-4):
     """
     Use Deep Evidential Regression negative log likelihood loss + evidential
         regularizer
@@ -126,12 +126,45 @@ def evidential_loss(mu, v, alpha, beta, targets, lam=1, epsilon=1e-4):
 
     return loss
 
+def evidential_loss(mu, v, alpha, beta, targets):
+    """
+    Use Deep Evidential Regression Sum of Squared Error loss
+    :mu: Pred mean parameter for NIG
+    :v: Pred lambda parameter for NIG
+    :alpha: predicted parameter for NIG
+    :beta: Predicted parmaeter for NIG
+    :targets: Outputs to predict
+    :return: Loss
+    """
+
+    # Calculate SOS
+    # Calculate gamma terms in front
+    def Gamma(x):
+        return torch.exp(torch.lgamma(x))
+
+    coeff_denom = 4 * Gamma(alpha) * v * torch.sqrt(beta)
+    coeff_num = Gamma(alpha - 0.5)
+    coeff = coeff_num / coeff_denom
+
+    # Calculate target dependent loss
+    second_term = 2 * beta * (1 + v)
+    second_term += (2 * alpha - 1) * v * torch.pow((targets - mu), 2)
+    L_SOS = coeff * second_term
+
+    # Calculate regularizer
+    L_REG = torch.pow((targets - mu), 2) * (2 * alpha + v)
+
+    loss_val = L_SOS + L_REG
+
+    return loss_val
 #------------------------------------
 # Train Step
 #------------------------------------
 
-def train(model,batch,num_t,device,maxnorm=1000):
+def train(model,optimizer,batch,num_t,device,maxnorm=1000):
     model.train()
+    # lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.8, patience=2,
+    #                                                          min_lr=1e-4,verbose=True)
     batch = [i.to(device) for i in batch]
     N_t, Z_t, R_t, Eref_t, Earef_t, Fref_t, Qref_t, Qaref_t, Dref_t = batch
 
@@ -153,8 +186,9 @@ def train(model,batch,num_t,device,maxnorm=1000):
 
     p = evidential(out)
     mae_energy = torch.mean(torch.abs(p[:,0] - Eref_t))
-    loss = evidential_loss(p[:, 0], p[:, 1], p[:, 2], p[:, 3], Eref_t).sum()
+    loss = evidential_loss_new(p[:, 0], p[:, 1], p[:, 2], p[:, 3], Eref_t).sum()/len(N_t)
     loss.backward(retain_graph=True)
+    # lr_schedule.step(loss)
     # #Gradient clip
     nn.utils.clip_grad_norm_(model.parameters(),maxnorm)
     pnorm = compute_pnorm(model)
