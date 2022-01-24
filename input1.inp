@@ -16,10 +16,10 @@
 --num_train=800
 --num_valid=100
 --batch_size=10
---valid_batch_size=50
+--valid_batch_size=2
 --seed=42
 --max_steps=100
---learning_rate=0.0002
+--learning_rate=0.00001
 --decay_steps=1000
 --decay_rate=0.1
 --max_norm=1000.0

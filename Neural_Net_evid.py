@@ -172,11 +172,12 @@ class PhysNet(nn.Module):
             self.writer.add_scalar("d3-a1", self.a1)
             self.writer.add_scalar("d3-a2", self.a2)
 
-        # Initialize output scale/shift variables
-        self.Eshift = torch.empty(95,device=self.device).new_full((95,), Eshift).type(dtype)
-        self.Escale = torch.empty(95,device=self.device).new_full((95,), Escale).type(dtype)
-        self.Qshift = torch.empty(95,device=self.device).new_full((95,), Qshift).type(dtype)
-        self.Qscale = torch.empty(95,device=self.device).new_full((95,), Qscale).type(dtype)
+        # # Initialize output scale/shift variables
+        self.Eshift = nn.Parameter(torch.empty(95,device=self.device).new_full((95,), Eshift).type(dtype))
+        self.Escale = nn.Parameter(torch.empty(95,device=self.device).new_full((95,), Escale).type(dtype))
+        self.Qshift = nn.Parameter(torch.empty(95,device=self.device).new_full((95,), Qshift).type(dtype))
+        self.Qscale = nn.Parameter(torch.empty(95,device=self.device).new_full((95,), Qscale).type(dtype))
+
 
         self.interaction_block = nn.ModuleList([InteractionBlock(
             F, K, num_residual_atomic, num_residual_interaction,
