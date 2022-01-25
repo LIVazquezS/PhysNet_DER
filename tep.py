@@ -71,7 +71,7 @@ def get_indices(Nref,device='cpu'):
 # Loss function
 #------------------------------------
 
-def evidential_loss_new(mu, v, alpha, beta, targets, lam=1, epsilon=1e-4):
+def evidential_loss_new(mu, v, alpha, beta, targets, lam=0.2, epsilon=1e-4):
     """
     I use 0.2 as the found it as the best value on their paper.
     Use Deep Evidential Regression negative log likelihood loss + evidential
