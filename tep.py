@@ -68,32 +68,10 @@ def get_indices(Nref,device='cpu'):
     return idx.type(torch.int64), idx_i.type(torch.int64), idx_j.type(torch.int64), batch_seg.type(torch.int64)
 
 #------------------------------------
-# Evidential layer
-#------------------------------------
-
-def evidential_layer(means, loglambdas, logalphas, logbetas):
-    min_val = 1e-6
-    lambdas = torch.nn.Softplus()(loglambdas) + min_val
-    alphas = torch.nn.Softplus()(logalphas) + min_val + 1  # add 1 for numerical contraints of Gamma function
-    betas = torch.nn.Softplus()(logbetas) + min_val
-
-    # Return these parameters as the output of the model
-    output = torch.stack((means, lambdas, alphas, betas),
-                         dim=1)
-    return output
-
-def evidential(out):
-
-    # Split the outputs into the four distribution parameters for energy and charge
-    # means, loglambdas, logalphas, logbetas = torch.split(out,out.shape[1]//4,dim=1)
-    means, loglambdas, logalphas, logbetas = out
-    out_E = evidential_layer(means, loglambdas, logalphas, logbetas)
-    return out_E
-#------------------------------------
 # Loss function
 #------------------------------------
 
-def evidential_loss_new(mu, v, alpha, beta, targets, lam=0.2, epsilon=1e-4):
+def evidential_loss_new(mu, v, alpha, beta, targets, lam=1, epsilon=1e-4):
     """
     I use 0.2 as the found it as the best value on their paper.
     Use Deep Evidential Regression negative log likelihood loss + evidential
@@ -124,6 +102,15 @@ def evidential_loss_new(mu, v, alpha, beta, targets, lam=0.2, epsilon=1e-4):
     # Loss = L_NLL + L_REG
     # TODO If we want to optimize the dual- of the objective use the line below:
     loss = L_NLL + lam * (L_REG - epsilon)
+
+    return loss
+
+def gauss_loss(mu,sigma,targets):
+    """
+    This defines a simple loss function for learning the log-likelihood of a gaussian distribution.
+    In the future, we should use a regularizer.
+    """
+    loss = 0.5*np.log(2*np.pi) + 0.5*torch.log(sigma**2) + ((targets-mu)**2)/(2*sigma**2)
 
     return loss
 
@@ -158,11 +145,48 @@ def evidential_loss(mu, v, alpha, beta, targets):
     loss_val = L_SOS + L_REG
 
     return loss_val
+
+
+
 #------------------------------------
 # Train Step
 #------------------------------------
 
-def train(model,optimizer,batch,num_t,device,maxnorm=1000):
+def train(model,batch,num_t,device,maxnorm=1000):
+    model.train()
+    # lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.8, patience=2,
+    #                                                          min_lr=1e-4,verbose=True)
+    batch = [i.to(device) for i in batch]
+    N_t, Z_t, R_t, Eref_t, Earef_t, Fref_t, Qref_t, Qaref_t, Dref_t = batch
+
+    # Get indices
+    idx_t, idx_i_t, idx_j_t, batch_seg_t = get_indices(N_t,device=device)
+
+    # Gather data
+    Z_t = gather_nd(Z_t, idx_t)
+    R_t = gather_nd(R_t, idx_t)
+
+    if torch.count_nonzero(Earef_t) != 0:
+        Earef_t = gather_nd(Earef_t, idx_t)
+    if torch.count_nonzero(Fref_t) != 0:
+        Fref_t = gather_nd(Fref_t, idx_t)
+    if torch.count_nonzero(Qaref_t) != 0:
+        Qaref_t = gather_nd(Qaref_t, idx_t)
+    # model.zero_grad()
+    out = model.energy_evidential(Z_t, R_t, idx_i_t, idx_j_t, Qref_t, batch_seg_t)
+    mae_energy = torch.mean(torch.abs(out[0] - Eref_t))
+
+    loss = evidential_loss_new(out[0], out[1], out[2], out[3], Eref_t).sum()
+    loss.backward(retain_graph=True)
+    # lr_schedule.step(loss)
+    # #Gradient clip
+    nn.utils.clip_grad_norm_(model.parameters(),maxnorm)
+    pnorm = compute_pnorm(model)
+    gnorm = compute_gnorm(model)
+    num_t = num_t + N_t.dim()
+    return num_t, loss, mae_energy, pnorm, gnorm
+
+def gauss_train(model,batch,num_t,device,maxnorm=1000):
     model.train()
     # lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.8, patience=2,
     #                                                          min_lr=1e-4,verbose=True)
@@ -183,11 +207,10 @@ def train(model,optimizer,batch,num_t,device,maxnorm=1000):
     if torch.count_nonzero(Qaref_t) != 0:
         Qaref_t = gather_nd(Qaref_t, idx_t)
     model.zero_grad()
-    out = model.energy_evidential(Z_t, R_t, idx_i_t, idx_j_t, Qref_t, batch_seg_t)
+    out = model.energy_gauss(Z_t, R_t, idx_i_t, idx_j_t, Qref_t, batch_seg_t)
+    mae_energy = torch.mean(torch.abs(out[0] - Eref_t))
 
-    p = evidential(out)
-    mae_energy = torch.mean(torch.abs(p[:,0] - Eref_t))
-    loss = evidential_loss_new(p[:, 0], p[:, 1], p[:, 2], p[:, 3], Eref_t).sum()/len(N_t)
+    loss = gauss_loss(out[0], out[1], Eref_t).sum()
     loss.backward(retain_graph=True)
     # lr_schedule.step(loss)
     # #Gradient clip
@@ -196,6 +219,7 @@ def train(model,optimizer,batch,num_t,device,maxnorm=1000):
     gnorm = compute_gnorm(model)
     num_t = num_t + N_t.dim()
     return num_t, loss, mae_energy, pnorm, gnorm
+
 
 #====================================
 # Prediction
@@ -216,24 +240,54 @@ def predict(model,batch,num_v,device):
     if torch.count_nonzero(Qaref_v) != 0:
         Qaref_v = gather_nd(Qaref_v, idx_v)
 
-    # Gather data
     with torch.no_grad():
         out = model.energy_evidential(Z_v, R_v, idx_i_v, idx_j_v, Qref_v, batch_seg_v)
-        preds_b = evidential(out)
 
     # loss
-    preds = preds_b
+    preds = out
 
-    loss = evidential_loss(preds[:, 0], preds[:, 1], preds[:, 2], preds[:, 3], Eref_v).sum()
-    preds = preds.cpu().detach().numpy()
-    p = preds[:,0]
-    c = 1 /((preds[:,2]-1)*preds[:,1])
-    var = preds[:,3]*c
-    Eref_v = Eref_v.detach().cpu().numpy()
-    Error_v = np.mean(np.abs(p - Eref_v))
+    loss = evidential_loss(preds[0], preds[1], preds[2], preds[3], Eref_v).sum()
+    # preds = preds.cpu().detach().numpy()
+    p = preds[0]
+    c = 1 /((preds[2]-1)*preds[1])
+    var = preds[3]*c
+    # Eref_v = Eref_v.detach().cpu().numpy()
+    Error_v = torch.mean(torch.abs(p - Eref_v)).detach().numpy()
     num_v = num_v + N_v.dim()
     return num_v,loss, p, c, var, Error_v
 
+def gauss_predict(model,batch,num_v,device):
+    model.eval()
+    batch = [i.to(device) for i in batch]
+    N_v, Z_v, R_v, Eref_v, Earef_v, Fref_v, Qref_v, Qaref_v, Dref_v = batch
+    # Get indices
+    idx_v, idx_i_v, idx_j_v, batch_seg_v = get_indices(N_v,device=device)
+    Z_v = gather_nd(Z_v, idx_v)
+    R_v = gather_nd(R_v, idx_v)
+
+    if torch.count_nonzero(Earef_v) != 0:
+        Earef_v = gather_nd(Earef_v, idx_v)
+    if torch.count_nonzero(Fref_v) != 0:
+        Fref_v = gather_nd(Fref_v, idx_v)
+    if torch.count_nonzero(Qaref_v) != 0:
+        Qaref_v = gather_nd(Qaref_v, idx_v)
+
+    with torch.no_grad():
+        out = model.energy_gauss(Z_v, R_v, idx_i_v, idx_j_v, Qref_v, batch_seg_v)
+
+    # loss
+    preds = out
+
+    loss = gauss_loss(preds[0], preds[1], Eref_v).sum()
+    # preds = preds.cpu().detach().numpy()
+    p = preds[0]
+    s = preds[1]
+    # c = 1 /((preds[2]-1)*preds[1])
+    # var = preds[3]*c
+    # Eref_v = Eref_v.detach().cpu().numpy()
+    Error_v = torch.mean(torch.abs(p - Eref_v)).detach().numpy()
+    num_v = num_v + N_v.dim()
+    return num_v,loss, p, s, Error_v
 
 #------------------------------------
 # Evaluation

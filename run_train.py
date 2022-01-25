@@ -303,13 +303,13 @@ logging.info("starting training...")
 optimizer = torch.optim.Adam(params=model.parameters(), lr=args.learning_rate,
                              weight_decay=args.l2lambda,amsgrad=True)
 
-# lr_schedule = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.decay_rate)
+lr_schedule = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.decay_rate)
 # lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,factor=args.decay_rate,patience=2,verbose=True)
-lr_schedule = NoamLR(optimizer=optimizer,warmup_epochs=[2.0],total_epochs=[args.max_steps],
-                     steps_per_epoch=args.num_train // args.batch_size,
-                     init_lr=[args.learning_rate],
-                     max_lr=[0.001],
-                     final_lr=[2*args.learning_rate])
+# lr_schedule = NoamLR(optimizer=optimizer,warmup_epochs=[2.0],total_epochs=[args.max_steps],
+#                      steps_per_epoch=args.num_train // args.batch_size,
+#                      init_lr=[args.learning_rate],
+#                      max_lr=[0.001],
+#                      final_lr=[2*args.learning_rate])
 
 # Define Exponential Moving Average
 
@@ -362,7 +362,7 @@ while epoch <= args.max_steps:
                 length=42)
 
         # Training step
-        num_t,loss_ev_t, emae_t, pnorm_t, gnorm_t = train(model, optimizer,batch,num_t,device=args.device,maxnorm=args.max_norm)
+        num_t,loss_ev_t, emae_t, pnorm_t, gnorm_t = train(model,batch,num_t,device=args.device,maxnorm=args.max_norm)
 
         optimizer.step()
 
@@ -382,7 +382,7 @@ while epoch <= args.max_steps:
 
         # Increment step number
         step = step + 1
-    lr_schedule.step()
+    # lr_schedule.step()
     # Stop train timer
     train_end = time()
     time_train = train_end - train_start
@@ -480,11 +480,11 @@ while epoch <= args.max_steps:
             save_checkpoint(model=model, epoch=epoch, optimizer=optimizer,best=True)
 
         # Update best results
-        results_b = {}
-        results_b["loss_best"] = best_loss
-        if data.include_E:
-            results_b["energy_mae_best"] = best_emae
-            results_b["energy_rmse_best"] = best_ermse
+            results_b = {}
+            results_b["loss_best"] = best_loss
+            if data.include_E:
+                results_b["energy_mae_best"] = best_emae
+                results_b["energy_rmse_best"] = best_ermse
 
         # Write the results to tensorboard
         for key, value in results_b.items():
