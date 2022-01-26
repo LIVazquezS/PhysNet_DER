@@ -252,7 +252,10 @@ def predict(model,batch,num_v,device):
     c = 1 /((preds[2]-1)*preds[1])
     var = preds[3]*c
     # Eref_v = Eref_v.detach().cpu().numpy()
-    Error_v = torch.mean(torch.abs(p - Eref_v)).detach().numpy()
+    if torch.cuda.is_available():
+        Error_v = torch.mean(torch.abs(p - Eref_v)).detach().cpu().numpy()
+    else:
+        Error_v = torch.mean(torch.abs(p - Eref_v)).detach().numpy()
     num_v = num_v + N_v.dim()
     return num_v,loss, p, c, var, Error_v
 
@@ -285,7 +288,10 @@ def gauss_predict(model,batch,num_v,device):
     # c = 1 /((preds[2]-1)*preds[1])
     # var = preds[3]*c
     # Eref_v = Eref_v.detach().cpu().numpy()
-    Error_v = torch.mean(torch.abs(p - Eref_v)).detach().numpy()
+    if torch.cuda.is_available():
+        Error_v = torch.mean(torch.abs(p - Eref_v)).detach().cpu().numpy()
+    else:
+        Error_v = torch.mean(torch.abs(p - Eref_v)).detach().numpy()
     num_v = num_v + N_v.dim()
     return num_v,loss, p, s, Error_v
 

@@ -12,7 +12,7 @@
 --grimme_s8=0.0
 --grimme_a1=0.0
 --grimme_a2=0.0
---dataset=data/qm9_1000.npz
+--dataset=data/QM9-alone.npz
 --num_train=800
 --num_valid=100
 --batch_size=1
@@ -30,4 +30,4 @@
 --show_progress=True
 --save_interval=5
 --record_run_metadata=0
---device=cpu
+--device=cuda
