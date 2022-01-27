@@ -7,7 +7,7 @@ from layers.utils import segment_sum
 from layers.RBFLayer import RBFLayer
 from layers.InteractionBlock import InteractionBlock
 from layers.OutputBlock import OutputBlock
-from layers.activation_fn import ActivationFN
+from layers.activation_fn import *
 from grimme_d3.grimme_d3 import *
 
 def softplus_inverse(x):
@@ -89,7 +89,7 @@ class PhysNet(nn.Module):
                  # (default is in units e=1, eV=1, A=1)
                  kehalf=7.199822675975274,
                  # Activation function
-                 activation_fn="shift_softplus",
+                 activation_fn=shifted_softplus,
                  # Single or double precision
                  dtype=torch.float32,
                  # Rate for dropout,
@@ -187,28 +187,43 @@ class PhysNet(nn.Module):
         # self.lshift = nn.Parameter(torch.zeros(95, device=self.device, dtype=dtype))
 
         self.interaction_block = nn.ModuleList([InteractionBlock(
-            F, K, num_residual_atomic, num_residual_interaction,
-            activation_fn=activation_fn, rate=self.rate,device=self.device)
+            K, F, num_residual_atomic, num_residual_interaction,
+            activation_fn=self.activation_fn, rate=self.rate,device=self.device)
             for _ in range(self.num_blocks)])
 
         self.output_block = nn.ModuleList([OutputBlock(
-            F, num_residual_output, n_output=1, activation_fn=activation_fn, rate=self.rate,device=self.device)
+            F, num_residual_output, n_output=1, activation_fn=self.activation_fn, rate=self.rate,device=self.device)
             for _ in range(self.num_blocks)])
 
         self.output_block_evid = nn.ModuleList([OutputBlock(
-            F, num_residual_output, n_output=4, activation_fn=activation_fn, rate=self.rate,device=self.device)
+            F, num_residual_output, n_output=4, activation_fn=self.activation_fn, rate=self.rate,device=self.device)
             for _ in range(self.num_blocks)])
 
         self.output_block_gauss = nn.ModuleList([OutputBlock(
-            F, num_residual_output, n_output=2, activation_fn=activation_fn, rate=self.rate,device=self.device)
+            F, num_residual_output, n_output=2, activation_fn=self.activation_fn, rate=self.rate,device=self.device)
             for _ in range(self.num_blocks)])
-        # Save checkpoint to write/read the models variables
+
+        self.build_requires_grad_dict()
+    def train(self, mode=True):
+        """ Turn on training mode. """
+        super(PhysNet, self).train(mode=mode)
+        for name, param in self.named_parameters():
+            param.requires_grad = self.requires_grad_dict[name]
 
     def eval(self):
         #Do i need this?
         super(PhysNet,self).eval()
         for name, param in self.named_parameters():
             param.requires_grad = False
+
+    def build_requires_grad_dict(self):
+        """
+        Build a dictionary of which parameters require gradient information (are
+        trained). Can be manually edited to freeze certain parameters)
+        """
+        self.requires_grad_dict = {}
+        for name, param in self.named_parameters():
+            self.requires_grad_dict[name] = param.requires_grad
 
     # ------------------------------------
     # Evidential layer
@@ -255,7 +270,7 @@ class PhysNet(nn.Module):
             Dij_sr = Dij_lr
 
         # Calculate radial basis function expansion
-        rbf = self.rbf_layer(Dij_sr.to(self.device)).to(self.device)
+        rbf = self.rbf_layer(Dij_sr.to(self.device))
 
         # Initialize feature vectors according to embeddings for
         # nuclear charges
@@ -414,10 +429,11 @@ class PhysNet(nn.Module):
             else:
                 Ea = Ea + d3_autoev * edisp(Z, Dij / d3_autoang, idx_i, idx_j,
                                             s6=self.s6, s8=self.s8, a1=self.a1, a2=self.a2,device=self.device)
-        Ea = segment_sum(Ea,batch_seg,device=self.device)
-        lambdas = segment_sum(lambdas,batch_seg,device=self.device)
-        alpha = segment_sum(alpha,batch_seg,device=self.device)
-        beta = segment_sum(beta,batch_seg,device=self.device)
+
+        Ea = torch.squeeze(segment_sum(Ea,batch_seg,device=self.device))
+        lambdas = torch.squeeze(segment_sum(lambdas,batch_seg,device=self.device))
+        alpha = torch.squeeze(segment_sum(alpha,batch_seg,device=self.device))
+        beta = torch.squeeze(segment_sum(beta,batch_seg,device=self.device))
         return Ea,lambdas,alpha,beta
 
     @torch.jit.export
@@ -440,8 +456,8 @@ class PhysNet(nn.Module):
                 Ea = Ea + d3_autoev * edisp(Z, Dij / d3_autoang, idx_i, idx_j,
                                             s6=self.s6, s8=self.s8, a1=self.a1, a2=self.a2,device=self.device)
 
-        Ea = segment_sum(Ea,batch_seg,device=self.device)
-        sigmas = segment_sum(sigmas,batch_seg,device=self.device)
+        Ea = torch.squeeze(segment_sum(Ea,batch_seg,device=self.device))
+        sigmas = torch.squeeze(segment_sum(sigmas,batch_seg,device=self.device))
 
         return Ea,sigmas
 

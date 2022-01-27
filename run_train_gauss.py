@@ -371,7 +371,7 @@ while epoch <= args.max_steps:
 
         # Increment step number
         step = step + 1
-    lr_schedule.step()
+
     # Stop train timer
     train_end = time()
     time_train = train_end - train_start
@@ -501,7 +501,7 @@ while epoch <= args.max_steps:
                     results_v["energy_mae_valid"]),
                 " Best valid MAE(E): {0: 1.3e}, ".format(
                     results_b["energy_mae_best"]))
-
+    lr_schedule.step()
     # Increment epoch number
     epoch += 1
 

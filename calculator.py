@@ -8,7 +8,7 @@ from ase.calculators.calculator import Calculator
 from ase.neighborlist import neighbor_list
 #Neural network imports
 from Neural_Net_evid import PhysNet
-from tep import evidential
+from layers.activation_fn import  *
 ''' 
 Calculator for the atomic simulation environment (ASE) 
 that evaluates energies and forces using a neural network.
@@ -113,7 +113,7 @@ class PhysNetCalculator(Calculator):
             a1=args.grimme_a1,
             a2=args.grimme_a2,
             writer=False,
-            activation_fn="shift_softplus",
+            activation_fn=shifted_softplus,
             device=args.device)
 
         self._Z = torch.tensor(atoms.get_atomic_numbers(), dtype=torch.int32,device=self.device)

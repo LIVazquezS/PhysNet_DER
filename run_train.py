@@ -15,7 +15,8 @@ from datetime import datetime
 from time import time
 # Neural Network importations
 from Neural_Net_evid import PhysNet
-# from neural_network.activation_fn import *
+from layers.utils import segment_sum
+from layers.activation_fn import *
 from NeuralNet import gather_nd
 from DataContainer import DataContainer
 #Other importations
@@ -228,34 +229,29 @@ def printProgressBar(iteration, total, prefix='', suffix='', decimals=1, length=
         print()
 
 
-def reset_averages(device='cpu'):
+def reset_averages(type,device='cpu'):
     ''' Reset counter and average values '''
-
     null_float = torch.tensor(0.0, dtype=torch.float32,device=device)
+    if type == "train":
+        return null_float, null_float, null_float, null_float, null_float, null_float
+    elif type == "valid":
+        return null_float, null_float, null_float, null_float
 
-    return null_float, null_float, null_float, null_float, null_float
+def l2_regularizer(model,l2_lambda=0.001):
+    l2_norm = sum(p.pow(2.0).sum() for p in model.parameters())
+    return l2_lambda*l2_norm
 
-
-def calculate_errors(val1, val2):
-    ''' Calculate error values and loss function '''
-    lf = nn.L1Loss(reduction="mean")
-    loss = lf(val1, val2)
-    delta2 = loss ** 2
-    mae = loss
-    # Mean squared error
-    mse = torch.sum(delta2)
-
-    return loss, mse, mae
-
-#Should this go also to cuda?
-def calculate_null(val1, val2,device='cpu'):
-    ''' Return zero for error and loss values '''
-
-    null = torch.zeros(1, dtype=torch.float32,device=device)
-
-    return null, null, null
+#====================================
+# Some functions
+#====================================
+def compute_pnorm(model):
+    """Computes the norm of the parameters of a model."""
+    return np.sqrt(sum([p.norm().item() ** 2 for p in model.parameters()]))
 
 
+def compute_gnorm(model):
+    """Computes the norm of the gradients of a model."""
+    return np.sqrt(sum([p.grad.norm().item() ** 2 for p in model.parameters() if p.grad is not None]))
 # ------------------------------------------------------------------------------
 # Load data and initiate PhysNet model
 # ------------------------------------------------------------------------------
@@ -288,9 +284,295 @@ model = PhysNet(
     a2=args.grimme_a2,
     Eshift=data.EperA_m_n,
     Escale=data.EperA_s_n,
-    activation_fn="shift_softplus",
+    activation_fn=shifted_softplus,
     device=args.device,
     writer=summary_writer)
+
+
+if os.path.isfile(best_loss_file):
+    loss_file = np.load(best_loss_file)
+    best_loss = loss_file["loss"].item()
+    best_emae = loss_file["emae"].item()
+    best_ermse = loss_file["ermse"].item()
+else:
+    best_loss = np.Inf
+    best_emae = np.Inf
+    best_ermse = np.Inf
+    best_epoch = 0.
+    np.savez(
+        best_loss_file, loss=best_loss, emae=best_emae, ermse=best_ermse,
+        epoch=best_epoch)
+
+#------------------------------------
+# Loss function
+#------------------------------------
+
+def evidential_loss_new(mu, v, alpha, beta, targets, lam=1, epsilon=1e-4):
+    """
+    I use 0.2 as the found it as the best value on their paper.
+    Use Deep Evidential Regression negative log likelihood loss + evidential
+        regularizer
+    We will use the new version on the paper..
+    :mu: pred mean parameter for NIG
+    :v: pred lam parameter for NIG
+    :alpha: predicted parameter for NIG
+    :beta: Predicted parmaeter for NIG
+    :targets: Outputs to predict
+    :return: Loss
+    """
+    # Calculate NLL loss
+    twoBlambda = 2*beta*(1+v)
+    nll = 0.5*torch.log(np.pi/v) \
+        - alpha*torch.log(twoBlambda) \
+        + (alpha+0.5) * torch.log(v*(targets-mu)**2 + twoBlambda) \
+        + torch.lgamma(alpha) \
+        - torch.lgamma(alpha+0.5)
+
+    L_NLL = nll #torch.mean(nll, dim=-1)
+
+    # Calculate regularizer based on absolute error of prediction
+    error = torch.abs((targets - mu))
+    reg = error * (2 * v + alpha)
+    L_REG = reg #torch.mean(reg, dim=-1)
+
+    # Loss = L_NLL + L_REG
+    # TODO If we want to optimize the dual- of the objective use the line below:
+    loss = L_NLL + lam * (L_REG - epsilon) + l2_regularizer(model)
+
+    return loss
+
+def gauss_loss(mu,sigma,targets):
+    """
+    This defines a simple loss function for learning the log-likelihood of a gaussian distribution.
+    In the future, we should use a regularizer.
+    """
+    loss = 0.5*np.log(2*np.pi) + 0.5*torch.log(sigma**2) + ((targets-mu)**2)/(2*sigma**2) + l2_regularizer(model)
+
+    return loss
+
+def evidential_loss(mu, v, alpha, beta, targets):
+    """
+    Use Deep Evidential Regression Sum of Squared Error loss
+    :mu: Pred mean parameter for NIG
+    :v: Pred lambda parameter for NIG
+    :alpha: predicted parameter for NIG
+    :beta: Predicted parmaeter for NIG
+    :targets: Outputs to predict
+    :return: Loss
+    """
+
+    # Calculate SOS
+    # Calculate gamma terms in front
+    def Gamma(x):
+        return torch.exp(torch.lgamma(x))
+
+    coeff_denom = 4 * Gamma(alpha) * v * torch.sqrt(beta)
+    coeff_num = Gamma(alpha - 0.5)
+    coeff = coeff_num / coeff_denom
+
+    # Calculate target dependent loss
+    second_term = 2 * beta * (1 + v)
+    second_term += (2 * alpha - 1) * v * torch.pow((targets - mu), 2)
+    L_SOS = coeff * second_term
+
+    # Calculate regularizer
+    L_REG = torch.pow((targets - mu), 2) * (2 * alpha + v)
+
+    loss_val = L_SOS + L_REG + l2_regularizer(model)
+
+    return loss_val
+# ------------------------------------------------------------------------------
+# Define training step
+# ------------------------------------------------------------------------------
+def get_indices(Nref,device='cpu'):
+    # Get indices pointing to batch image
+    # For some reason torch does not make repetition for float
+    batch_seg = torch.arange(0, Nref.size()[0],device=device).repeat_interleave(Nref.type(torch.int64))
+    # Initiate auxiliary parameter
+    Nref_tot = torch.tensor(0, dtype=torch.int32).to(device)
+
+    # Indices pointing to atom at each batch image
+    idx = torch.arange(end=Nref[0], dtype=torch.int32).to(device)
+    # Indices for atom pairs ij - Atom i
+    Ntmp = Nref.cpu()
+    idx_i = idx.repeat(int(Ntmp.numpy()[0]) - 1) + Nref_tot
+    # Indices for atom pairs ij - Atom j
+    idx_j = torch.roll(idx, -1, dims=0) + Nref_tot
+    for Na in torch.arange(2, Nref[0]):
+        Na_tmp = Na.cpu()
+        idx_j = torch.concat(
+            [idx_j, torch.roll(idx, int(-Na_tmp.numpy()), dims=0) + Nref_tot],
+            dim=0)
+
+    # Increment auxiliary parameter
+    Nref_tot = Nref_tot + Nref[0]
+
+    # Complete indices arrays
+    for Nref_a in Nref[1:]:
+
+        rng_a = torch.arange(end=Nref_a).to(device)
+        Nref_a_tmp = Nref_a.cpu()
+        idx = torch.concat([idx, rng_a], axis=0)
+        idx_i = torch.concat(
+            [idx_i, rng_a.repeat(int(Nref_a_tmp.numpy()) - 1) + Nref_tot],
+            dim=0)
+        for Na in torch.arange(1, Nref_a):
+            Na_tmp = Na.cpu()
+            idx_j = torch.concat(
+                [idx_j, torch.roll(rng_a, int(-Na_tmp.numpy()), dims=0) + Nref_tot],
+                dim=0)
+
+        # Increment auxiliary parameter
+        Nref_tot = Nref_tot + Nref_a
+    #Reorder the idx in i
+    idx_i = torch.sort(idx_i)[0]
+    # Combine indices for batch image and respective atoms
+    idx = torch.stack([batch_seg, idx], dim=1)
+    return idx.type(torch.int64), idx_i.type(torch.int64), idx_j.type(torch.int64), batch_seg.type(torch.int64)
+
+def evid_train_step(batch,num_t,loss_avg_t, emse_avg_t, emae_avg_t,pnorm,gnorm,device,maxnorm=1000):
+    model.train()
+    # lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.8, patience=2,
+    #                                                          min_lr=1e-4,verbose=True)
+    batch = [i.to(device) for i in batch]
+    N_t, Z_t, R_t, Eref_t, Earef_t, Fref_t, Qref_t, Qaref_t, Dref_t = batch
+
+    # Get indices
+    idx_t, idx_i_t, idx_j_t, batch_seg_t = get_indices(N_t,device=device)
+
+    # Gather data
+    Z_t = gather_nd(Z_t, idx_t)
+    R_t = gather_nd(R_t, idx_t)
+
+    if torch.count_nonzero(Earef_t) != 0:
+        Earef_t = gather_nd(Earef_t, idx_t)
+    if torch.count_nonzero(Fref_t) != 0:
+        Fref_t = gather_nd(Fref_t, idx_t)
+    if torch.count_nonzero(Qaref_t) != 0:
+        Qaref_t = gather_nd(Qaref_t, idx_t)
+
+    energy_t, lambdas_t, alpha_t, beta_t = \
+        model.energy_evidential(Z_t, R_t, idx_i_t, idx_j_t, Qref_t, batch_seg=batch_seg_t)
+    mae_energy = torch.mean(torch.abs(energy_t - Eref_t))
+    mse_energy = torch.mean(torch.square(energy_t-Eref_t))
+    loss_t = evidential_loss_new(energy_t, lambdas_t, alpha_t, beta_t, Eref_t).sum()
+    loss_t.backward(retain_graph=True)
+    # lr_schedule.step(loss)
+    # #Gradient clip
+    nn.utils.clip_grad_norm_(model.parameters(),maxnorm)
+    pnorm = pnorm + compute_pnorm(model)
+    gnorm = gnorm + compute_gnorm(model)
+    f = num_t /(num_t + N_t.dim())
+    loss_avg_t = f * loss_avg_t + (1.0 -f)*float(loss_t)
+    emse_avg_t = f * emse_avg_t + (1.0 - f) * float(mae_energy)
+    emae_avg_t = f * emae_avg_t + (1.0 - f) * float(mse_energy)
+    num_t = num_t + N_t.dim()
+    return num_t, loss_avg_t, emae_avg_t, emse_avg_t, pnorm,gnorm
+
+def gauss_train_step(batch,num_t,loss_avg_t, emse_avg_t, emae_avg_t,device,maxnorm=1000):
+    model.train()
+    # lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.8, patience=2,
+    #                                                          min_lr=1e-4,verbose=True)
+    batch = [i.to(device) for i in batch]
+    N_t, Z_t, R_t, Eref_t, Earef_t, Fref_t, Qref_t, Qaref_t, Dref_t = batch
+
+    # Get indices
+    idx_t, idx_i_t, idx_j_t, batch_seg_t = get_indices(N_t,device=device)
+
+    # Gather data
+    Z_t = gather_nd(Z_t, idx_t)
+    R_t = gather_nd(R_t, idx_t)
+
+    if torch.count_nonzero(Earef_t) != 0:
+        Earef_t = gather_nd(Earef_t, idx_t)
+    if torch.count_nonzero(Fref_t) != 0:
+        Fref_t = gather_nd(Fref_t, idx_t)
+    if torch.count_nonzero(Qaref_t) != 0:
+        Qaref_t = gather_nd(Qaref_t, idx_t)
+
+    energy_t, lambdas_t\
+        = model.energy_gauss(Z_t, R_t, idx_i_t, idx_j_t, Qref_t, batch_seg=batch_seg_t)
+    mae_energy = torch.mean(torch.abs(energy_t - Eref_t))
+    mse_energy = torch.mean(torch.square(energy_t - Eref_t))
+
+    loss_t = gauss_loss(energy_t, lambdas_t, Eref_t).sum()
+    loss_t.backward(retain_graph=True)
+    # lr_schedule.step(loss)
+    # #Gradient clip
+    nn.utils.clip_grad_norm_(model.parameters(),maxnorm)
+    pnorm = compute_pnorm(model)
+    gnorm = compute_gnorm(model)
+    f = num_t /(num_t + N_t.dim())
+    loss_avg_t = f * loss_avg_t + (1.0 -f)*float(loss_t)
+    emse_avg_t = f * emse_avg_t + (1.0 - f) * float(mae_energy)
+    emae_avg_t = f * emae_avg_t + (1.0 - f) * float(mse_energy)
+    num_t = num_t + N_t.dim()
+    return num_t, loss_avg_t, emae_avg_t, emse_avg_t, pnorm,gnorm
+
+def evid_valid_step(batch,num_v,loss_avg_v, emse_avg_v, emae_avg_v,device):
+    model.eval()
+    batch = [i.to(device) for i in batch]
+    N_v, Z_v, R_v, Eref_v, Earef_v, Fref_v, Qref_v, Qaref_v, Dref_v = batch
+    # Get indices
+    idx_v, idx_i_v, idx_j_v, batch_seg_v = get_indices(N_v,device=device)
+    Z_v = gather_nd(Z_v, idx_v)
+    R_v = gather_nd(R_v, idx_v)
+
+    if torch.count_nonzero(Earef_v) != 0:
+        Earef_v = gather_nd(Earef_v, idx_v)
+    if torch.count_nonzero(Fref_v) != 0:
+        Fref_v = gather_nd(Fref_v, idx_v)
+    if torch.count_nonzero(Qaref_v) != 0:
+        Qaref_v = gather_nd(Qaref_v, idx_v)
+
+    with torch.no_grad():
+        energy_v, lambdas_v, alpha_v, beta_v = \
+            model.energy_evidential(Z_v, R_v, idx_i_v, idx_j_v, Qref_v, batch_seg=batch_seg_v)
+
+    # loss
+    loss_v = evidential_loss(energy_v, lambdas_v, alpha_v, beta_v, Eref_v).sum()
+    mae_energy = torch.mean(torch.abs(energy_v - Eref_v))
+    mse_energy = torch.mean(torch.square(energy_v - Eref_v))
+    f = num_v / (num_v + N_v.dim())
+    loss_avg_v = f * loss_avg_v + (1.0 - f) * float(loss_v)
+    emse_avg_v = f * emse_avg_v + (1.0 - f) * float(mae_energy)
+    emae_avg_v = f * emae_avg_v + (1.0 - f) * float(mse_energy)
+    # c = 1 /((preds[2]-1)*preds[1])
+    # var = preds[3]*c
+    num_v = num_v + N_v.dim()
+    return num_v,loss_avg_v, emse_avg_v, emae_avg_v
+
+def gauss_eval_step(batch,num_v,loss_avg_v, emse_avg_v, emae_avg_v,device):
+
+    model.eval()
+    batch = [i.to(device) for i in batch]
+    N_v, Z_v, R_v, Eref_v, Earef_v, Fref_v, Qref_v, Qaref_v, Dref_v = batch
+    # Get indices
+    idx_v, idx_i_v, idx_j_v, batch_seg_v = get_indices(N_v,device=device)
+    Z_v = gather_nd(Z_v, idx_v)
+    R_v = gather_nd(R_v, idx_v)
+
+    if torch.count_nonzero(Earef_v) != 0:
+        Earef_v = gather_nd(Earef_v, idx_v)
+    if torch.count_nonzero(Fref_v) != 0:
+        Fref_v = gather_nd(Fref_v, idx_v)
+    if torch.count_nonzero(Qaref_v) != 0:
+        Qaref_v = gather_nd(Qaref_v, idx_v)
+
+    with torch.no_grad():
+        energy_v, lambdas_v = model.energy_gauss(Z_v, R_v, idx_i_v, idx_j_v, Qref_v, batch_seg=batch_seg_v)
+
+    # loss
+    loss_v = gauss_loss(energy_v, lambdas_v, Eref_v).sum()
+
+    mae_energy = torch.mean(torch.abs(energy_v - Eref_v))
+    mse_energy = torch.mean(torch.square(energy_v - Eref_v))
+    f = num_v / (num_v + N_v.dim())
+    loss_avg_v = f * loss_avg_v + (1.0 - f) * float(loss_v)
+    emse_avg_v = f * emse_avg_v + (1.0 - f) * float(mae_energy)
+    emae_avg_v = f * emae_avg_v + (1.0 - f) * float(mse_energy)
+    num_v = num_v + N_v.dim()
+    return num_v,loss_avg_v, emse_avg_v, emae_avg_v
 
 # ------------------------------------------------------------------------------
 # Train PhysNet model
@@ -338,7 +620,8 @@ best_loss = np.Inf
 while epoch <= args.max_steps:
 
     # Reset error averages
-    num_t,loss_ev_t, emae_t, pnorm_t, gnorm_t = reset_averages(device=args.device)
+    num_t, loss_avg_t, emse_avg_t, emae_avg_t,\
+    pnorm_t, gnorm_t = reset_averages("train",device=args.device)
 
     # Create train batches
     train_batches, N_train_batches = data.get_train_batches()
@@ -362,8 +645,10 @@ while epoch <= args.max_steps:
                 length=42)
 
         # Training step
-        num_t,loss_ev_t, emae_t, pnorm_t, gnorm_t = train(model,batch,num_t,device=args.device,maxnorm=args.max_norm)
 
+        num_t, loss_avg_t, emse_avg_t, emae_avg_t,\
+        pnorm_t, gnorm_t = evid_train_step(batch,num_t,loss_avg_t,
+                                                 emse_avg_t, emae_avg_t,pnorm_t,gnorm_t,args.device)
         optimizer.step()
 
         ema.update()
@@ -382,14 +667,14 @@ while epoch <= args.max_steps:
 
         # Increment step number
         step = step + 1
-    # lr_schedule.step()
+
     # Stop train timer
     train_end = time()
     time_train = train_end - train_start
 
     # Show final progress bar and time
     if args.show_progress:
-        loss_ev_t_temp = loss_ev_t.detach().cpu()
+        loss_ev_t_temp = loss_avg_t.detach().cpu()
         lat = float(loss_ev_t_temp.numpy())
         printProgressBar(
             N_train_batches, N_train_batches, prefix="Epoch {0: 5d}".format(
@@ -409,15 +694,16 @@ while epoch <= args.max_steps:
     if (epoch % args.validation_interval) == 0:
         # Update training results
         results_t = {}
-        loss_ev_t_temp = loss_ev_t.detach().cpu()
+        loss_ev_t_temp = loss_avg_t.detach().cpu()
         results_t["loss_train"] = loss_ev_t_temp.numpy()
         results_t["time_train"] = time_train
         results_t["norm_parm"] = pnorm_t
         results_t["norm_grad"] = gnorm_t
         if data.include_E:
-            emae_t_temp = emae_t.detach().cpu()
+            emae_t_temp = emae_avg_t.detach().cpu()
+            emse_t_temp = emse_avg_t.detach().cpu()
             results_t["energy_mae_train"] = emae_t_temp.numpy()
-            results_t["energy_rmse_train"] = np.sqrt(emae_t_temp.numpy())
+            results_t["energy_rmse_train"] = np.sqrt(emse_t_temp.numpy())
 
         # Write Results to tensorboard
         for key, value in results_t.items():
@@ -429,14 +715,14 @@ while epoch <= args.max_steps:
         #     var.assign(ema.average(var))
 
         # Reset error averages
-        #TODO Change this again
-        num_v, p, c, var, emae_v = reset_averages()
-        loss_v = torch.tensor(0.0, dtype=torch.float32,device=args.device)
+        num_v,loss_avg_v, emse_avg_v, emae_avg_v = reset_averages('valid',device=args.device)
         # Start valid timer
         valid_start = time()
 
         for ib, batch in enumerate(valid_batches):
-            num_v,loss_v,p, c, var, emae_v = predict(model, batch, num_v,device=args.device)
+            num_v,loss_avg_v, emse_avg_v, emae_avg_v =\
+                evid_valid_step(batch, num_v,loss_avg_v, emse_avg_v, emae_avg_v,
+                                device=args.device)
 
         # Stop valid timer
         valid_end = time()
@@ -444,12 +730,14 @@ while epoch <= args.max_steps:
 
         # Update validation results
         results_v = {}
-        loss_avg_v_temp = loss_v.detach().cpu()
+        loss_avg_v_temp = loss_avg_v.detach().cpu()
         results_v["loss_valid"] = loss_avg_v_temp.numpy()
         results_v["time_valid"] = time_valid
         if data.include_E:
-            results_v["energy_mae_valid"] = emae_v
-            results_v["energy_rmse_valid"] = np.sqrt(emae_v)
+            emae_v_temp = emae_avg_v.detach().cpu()
+            emse_v_temp = emse_avg_v.detach().cpu()
+            results_v["energy_mae_valid"] = emae_v_temp.numpy()
+            results_v["energy_rmse_valid"] = np.sqrt(emse_v_temp)
 
         for key, value in results_v.items():
             summary_writer.add_scalar(key, value, global_step=epoch)
@@ -468,23 +756,20 @@ while epoch <= args.max_steps:
             best_epoch = epoch.numpy()
 
             # Save best results
-            # np.savez(
-            #     best_loss_file, loss=best_loss,
-            #     emae=best_emae, ermse=best_ermse,
-            #     fmae=best_fmae, frmse=best_frmse,
-            #     qmae=best_qmae, qrmse=best_qrmse,
-            #     dmae=best_dmae, drmse=best_drmse,
-            #     epoch=best_epoch)
+            np.savez(
+                best_loss_file, loss=best_loss,
+                emae=best_emae, ermse=best_ermse,
+                epoch=best_epoch)
 
             # Save best model variables
             save_checkpoint(model=model, epoch=epoch, optimizer=optimizer,best=True)
 
         # Update best results
-            results_b = {}
-            results_b["loss_best"] = best_loss
-            if data.include_E:
-                results_b["energy_mae_best"] = best_emae
-                results_b["energy_rmse_best"] = best_ermse
+        results_b = {}
+        results_b["loss_best"] = best_loss
+        if data.include_E:
+            results_b["energy_mae_best"] = best_emae
+            results_b["energy_rmse_best"] = best_ermse
 
         # Write the results to tensorboard
         for key, value in results_b.items():
@@ -514,6 +799,7 @@ while epoch <= args.max_steps:
                     results_b["energy_mae_best"]))
 
     # Increment epoch number
+    lr_schedule.step()
     epoch += 1
 
 

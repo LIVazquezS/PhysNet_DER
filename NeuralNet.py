@@ -7,7 +7,7 @@ from layers.utils import segment_sum
 from layers.RBFLayer import RBFLayer
 from layers.InteractionBlock import InteractionBlock
 from layers.OutputBlock import OutputBlock
-from layers.activation_fn import ActivationFN
+from layers.activation_fn import *
 from grimme_d3.grimme_d3 import *
 
 def softplus_inverse(x):
@@ -89,7 +89,7 @@ class PhysNet(nn.Module):
                  # (default is in units e=1, eV=1, A=1)
                  kehalf=7.199822675975274,
                  # Activation function
-                 activation_fn="shift_softplus",
+                 activation_fn=shifted_softplus,
                  # Single or double precision
                  dtype=torch.float32,
                  # Rate for dropout,
@@ -125,67 +125,87 @@ class PhysNet(nn.Module):
             self.device ="cpu"
 
         # Atom embeddings (we go up to Pu(94): 95 - 1 ( for index 0))
-        self.embeddings = nn.Parameter(torch.Tensor(95, self.F,device=self.device).uniform_(-np.sqrt(3), np.sqrt(3)).requires_grad_(True))
+        self.embeddings = nn.Parameter(torch.empty(95, self.F,device=self.device).uniform_(-np.sqrt(3), np.sqrt(3)).requires_grad_(True))
 
         # torch.histogram(self.embeddings)
-        if writer is None:
-            self.writer = SummaryWriter()
-        elif writer == False:
-            pass
-        else:
-            self.writer = writer
-        self.writer.add_histogram("embeddings", self.embeddings, 0)
+
+
 
         # Initialize the radial basis functions
         self.rbf_layer = RBFLayer(K, sr_cut,device=self.device)
         # Initialize variables for d3 dispersion (the way this is done,
         # positive values are guaranteed)
         if s6 is None:
-            self.s6 = nn.Parameter(fnc.softplus(torch.tensor(softplus_inverse(d3_s6), requires_grad=True, dtype=dtype,device=self.device)))
+            self.s6 = nn.Parameter(fnc.softplus(
+                torch.tensor(softplus_inverse(d3_s6), requires_grad=True, dtype=dtype, device=self.device)))
         else:
-            self.s6 = torch.tensor(s6, requires_grad=False, dtype=dtype,device=self.device)
-        self.writer.add_scalar("d3-s6", self.s6)
+            self.s6 = torch.tensor(s6, requires_grad=False, dtype=dtype, device=self.device)
 
         if s8 is None:
-            self.s8 = nn.Parameter(fnc.softplus(torch.tensor(softplus_inverse(d3_s8), requires_grad=True, dtype=dtype,device=self.device)))
+            self.s8 = nn.Parameter(fnc.softplus(
+                torch.tensor(softplus_inverse(d3_s8), requires_grad=True, dtype=dtype, device=self.device)))
         else:
-            self.s8 = torch.tensor(s8, requires_grad=False, dtype=dtype,device=self.device)
-        self.writer.add_scalar("d3-s8", self.s8)
+            self.s8 = torch.tensor(s8, requires_grad=False, dtype=dtype, device=self.device)
 
         if a1 is None:
-            self.a1 = nn.Parameter(fnc.softplus(torch.tensor(softplus_inverse(d3_a1), requires_grad=True, dtype=dtype,device=self.device)))
+            self.a1 = nn.Parameter(fnc.softplus(
+                torch.tensor(softplus_inverse(d3_a1), requires_grad=True, dtype=dtype, device=self.device)))
         else:
-            self.a1 = torch.tensor(a1, requires_grad=False, dtype=dtype,device=self.device)
-        self.writer.add_scalar("d3-a1", self.a1)
+            self.a1 = torch.tensor(a1, requires_grad=False, dtype=dtype, device=self.device)
 
         if a2 is None:
-            self.a2 = nn.Parameter(fnc.softplus(torch.tensor(softplus_inverse(d3_a2), requires_grad=True, dtype=dtype,device=self.device)))
+            self.a2 = nn.Parameter(fnc.softplus(
+                torch.tensor(softplus_inverse(d3_a2), requires_grad=True, dtype=dtype, device=self.device)))
         else:
-            self.a2 = torch.tensor(a2, requires_grad=False, dtype=dtype,device=self.device)
-        self.writer.add_scalar("d3-a2", self.a2)
+            self.a2 = torch.tensor(a2, requires_grad=False, dtype=dtype, device=self.device)
+
+        if writer is None:
+            self.writer = SummaryWriter()
+        else:
+            self.writer = writer
+            self.writer.add_histogram("embeddings", self.embeddings)
+            self.writer.add_scalar("d3-s6", self.s6)
+            self.writer.add_scalar("d3-s8", self.s8)
+            self.writer.add_scalar("d3-a1", self.a1)
+            self.writer.add_scalar("d3-a2", self.a2)
 
         # Initialize output scale/shift variables
-        self.Eshift = torch.empty(95,device=self.device).new_full((95,), Eshift).type(dtype)
-        self.Escale = torch.empty(95,device=self.device).new_full((95,), Escale).type(dtype)
-        self.Qshift = torch.empty(95,device=self.device).new_full((95,), Qshift).type(dtype)
-        self.Qscale = torch.empty(95,device=self.device).new_full((95,), Qscale).type(dtype)
+        self.Eshift = nn.Parameter(torch.empty(95,device=self.device).new_full((95,), Eshift).type(dtype))
+        self.Escale = nn.Parameter(torch.empty(95,device=self.device).new_full((95,), Escale).type(dtype))
+        self.Qshift = nn.Parameter(torch.empty(95,device=self.device).new_full((95,), Qshift).type(dtype))
+        self.Qscale = nn.Parameter(torch.empty(95,device=self.device).new_full((95,), Qscale).type(dtype))
 
         self.interaction_block = nn.ModuleList([InteractionBlock(
-            F, K, num_residual_atomic, num_residual_interaction,
-            activation_fn=activation_fn, rate=self.rate,device=self.device)
+            K, F, num_residual_atomic, num_residual_interaction,
+            activation_fn=self.activation_fn, rate=self.rate,device=self.device)
             for _ in range(self.num_blocks)])
 
         self.output_block = nn.ModuleList([OutputBlock(
-            F, num_residual_output, activation_fn=activation_fn, rate=self.rate,device=self.device)
+            F, num_residual_output, activation_fn=self.activation_fn, rate=self.rate,device=self.device)
             for _ in range(self.num_blocks)])
 
+        self.build_requires_grad_dict()
 
+    def train(self, mode=True):
+        """ Turn on training mode. """
+        super(PhysNet, self).train(mode=mode)
+        for name, param in self.named_parameters():
+            param.requires_grad = self.requires_grad_dict[name]
 
     def eval(self):
         #Do i need this?
         super(PhysNet,self).eval()
         for name, param in self.named_parameters():
             param.requires_grad = False
+
+    def build_requires_grad_dict(self):
+        """
+        Build a dictionary of which parameters require gradient information (are
+        trained). Can be manually edited to freeze certain parameters)
+        """
+        self.requires_grad_dict = {}
+        for name, param in self.named_parameters():
+            self.requires_grad_dict[name] = param.requires_grad
 
     def calculate_interatomic_distances(self, R, idx_i, idx_j, offsets=None):
         ''' Calculate interatomic distances '''
@@ -218,7 +238,7 @@ class PhysNet(nn.Module):
             Dij_sr = Dij_lr
 
         # Calculate radial basis function expansion
-        rbf = self.rbf_layer(Dij_sr.to(self.device)).to(self.device)
+        rbf = self.rbf_layer(Dij_sr.to(self.device))
 
         # Initialize feature vectors according to embeddings for
         # nuclear charges
@@ -242,12 +262,9 @@ class PhysNet(nn.Module):
         # Apply scaling/shifting
         Ea = self.Escale[Z.type(torch.int64)] * Ea \
              + self.Eshift[Z.type(torch.int64)]
-        Ea.requires_grad_(True)
-        # + 0*tf.reduce_sum(R, -1))
-        # Last term necessary to guarantee no "None" in force evaluation
+
         Qa = self.Qscale[Z.type(torch.int64)] * Qa \
                  + self.Qshift[Z.type(torch.int64)]
-        Qa.requires_grad_(True)
 
         return Ea, Qa, Dij_lr, nhloss
 
@@ -259,7 +276,6 @@ class PhysNet(nn.Module):
             to prevent recomputation if atomic properties are calculated) '''
         if batch_seg is None:
             batch_seg = torch.zeros_like(Z)
-
         # Add electrostatic and dispersion contribution to atomic energy
         if self.use_electrostatic:
             Ea = Ea + self.electrostatic_energy_per_atom(Dij, Qa, idx_i, idx_j)
@@ -272,11 +288,8 @@ class PhysNet(nn.Module):
                 Ea = Ea + d3_autoev * edisp(Z, Dij / d3_autoang, idx_i, idx_j,
                                             s6=self.s6, s8=self.s8, a1=self.a1, a2=self.a2,device=self.device)
 
-        Ea = torch.squeeze(segment_sum(Ea,batch_seg))
-        # bs_u = len(torch.unique(batch_seg))
-        # Ea = Ea.new_zeros(bs_u).index_add(0, batch_seg, Ea)
-        # tp = segment_coo(Ea, index=batch_seg.type(torch.int64), reduce="sum")
-        # torch.squeeze()
+        Ea = torch.squeeze(segment_sum(Ea,batch_seg,device=self.device))
+
         return Ea
 
     @torch.jit.export
@@ -347,7 +360,8 @@ class PhysNet(nn.Module):
         return energy, forces
 
     @torch.jit.export
-    def energy(self, Z, R, idx_i, idx_j, Q_tot=None, batch_seg=None, offsets=None,
+    def energy(
+            self, Z, R, idx_i, idx_j, Q_tot=None, batch_seg=None, offsets=None,
             sr_idx_i=None, sr_idx_j=None, sr_offsets=None):
         ''' Calculates the total energy (including electrostatic
             interactions) '''
@@ -447,7 +461,7 @@ class PhysNet(nn.Module):
 
         # Number of atoms per batch (needed for charge scaling)
         Na_helper = torch.ones_like(batch_seg, dtype=self.dtype)
-        Na_per_batch = segment_sum(Na_helper,batch_seg.type(torch.int64))
+        Na_per_batch = segment_sum(Na_helper,batch_seg.type(torch.int64),device=self.device)
 
         # Na_per_batch = segment_coo(torch.ones_like(batch_seg, dtype=self.dtype),
         #                        index=batch_seg.type(torch.int64),reduce="sum")
@@ -456,7 +470,7 @@ class PhysNet(nn.Module):
             Q_tot = torch.zeros_like(Na_per_batch, dtype=self.dtype)
 
         # Return scaled charges (such that they have the desired total charge)
-        Q_correct = Q_tot - segment_sum(Qa,batch_seg.type(torch.int64))
+        Q_correct = Q_tot - segment_sum(Qa, batch_seg.type(torch.int64), device=self.device)
         Q_scaled = Qa + torch.gather((Q_correct / Na_per_batch), 0, batch_seg.type(torch.int64))
 
         return Q_scaled
@@ -512,7 +526,7 @@ class PhysNet(nn.Module):
                     cswitch * Eele_shielded + switch * Eele_ordinary)
             Eele = torch.where(Dij <= cut, Eele, torch.zeros_like(Eele))
 
-        Eele_f = segment_sum(Eele,idx_i)
+        Eele_f = segment_sum(Eele,idx_i,device=self.device)
 
         return Eele_f
 

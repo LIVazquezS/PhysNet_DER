@@ -20,16 +20,14 @@ class RBFLayer(nn.Module):
         self.cutoff = cutoff
         # Initialize centers (inverse softplus transformation is applied, 
         # such that softplus can be used to guarantee positive values)
-        centers = softplus_inverse(np.linspace(1.0,np.exp(-cutoff),K))
-                     
-        self.centers = nn.Parameter(f.softplus(torch.tensor(np.asarray(centers),
-                      requires_grad=True,dtype=dtype,device=self.device)))
+        centers = softplus_inverse(np.linspace(1.0,np.exp(-self.cutoff),K))
+        softp = nn.Softplus()
+        self.centers = softp(nn.Parameter(torch.tensor(np.asarray(centers),dtype=dtype,device=self.device)))
         # torch.histogram(self.centers)
 		# Initialize widths (inverse softplus transformation is applied, 
         # such that softplus can be used to guarantee positive values)
-        widths = [softplus_inverse((0.5/((1.0-np.exp(-cutoff))/K))**2)]*K
-        self.widths = nn.Parameter(f.softplus(torch.tensor(np.asarray(widths),requires_grad=True,
-                                   dtype=dtype,device=self.device)))
+        widths = [softplus_inverse((0.5/((1.0-np.exp(-self.cutoff))/K))**2)]*K
+        self.widths = softp(nn.Parameter(torch.tensor(np.asarray(widths),dtype=dtype,device=self.device)))
         # torch.histogram(self.widths)
 		
     def cutoff_fn(self, D):

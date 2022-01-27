@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as f
 import numpy as np
 from DataContainer import DataContainer
-from NeuralNet import PhysNet
+from Neural_Net_evid import PhysNet
 from layers.RBFLayer import RBFLayer
 from layers.InteractionBlock import InteractionBlock
 from layers.OutputBlock import OutputBlock
@@ -28,7 +28,7 @@ data_tot = DataContainer('data/qm9_1000.npz',800, 100,
 train_batches,N_train_batches = data_tot.get_train_batches()
 epoch = torch.tensor(1,requires_grad=False,dtype=torch.int64) 
 #
-# model = PhysNet()
+model = PhysNet(device='cpu')
 
 
 # model.to(cuda_device)

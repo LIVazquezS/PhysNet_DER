@@ -1,7 +1,7 @@
 import numpy  as np 
 import torch
 import torch.utils.data as data
- #TODO : Add options to read .db and .h5 files
+
 class DataContainer:
     
     def __repr__(self):
@@ -36,7 +36,7 @@ class DataContainer:
                 'The information about the Atomic positions R are essential')       
         # Reference energy
         if 'E' in dictionary:
-            self.E = lambda idx: torch.tensor(dictionary['E'][idx], dtype=dtype).requires_grad_(True)
+            self.E = lambda idx: torch.tensor(dictionary['E'][idx], dtype=dtype)
             self.include_E = True
         else:
             self.E = lambda idx: None
@@ -51,8 +51,8 @@ class DataContainer:
             self.include_Ea = False
         
         # Reference forces
-        if 'F' in dictionary:
-            self.F = lambda idx: torch.tensor(dictionary['F'][idx], dtype=dtype).requires_grad_(True)
+        if 'F' in dictionary and dictionary['F'].any() != 0:
+            self.F = lambda idx: torch.tensor(dictionary['F'][idx], dtype=dtype)
             self.include_F = True
         else:
             self.F = lambda idx: None
@@ -60,7 +60,7 @@ class DataContainer:
         
         # Reference total charge
         if 'Q' in dictionary: 
-            self.Q = lambda idx: torch.tensor(dictionary['Q'][idx], dtype=dtype).requires_grad_(True)
+            self.Q = lambda idx: torch.tensor(dictionary['Q'][idx], dtype=dtype)
             self.include_Q = True
         else:
             self.Q = lambda idx: None
@@ -76,7 +76,7 @@ class DataContainer:
         
         # Reference dipole moment vector
         if 'D' in dictionary: 
-            self.D = lambda idx: torch.tensor(dictionary['D'][idx], dtype=dtype).requires_grad_(True)
+            self.D = lambda idx: torch.tensor(dictionary['D'][idx], dtype=dtype)
             self.include_D = True
         else:
             self.D = lambda idx: None

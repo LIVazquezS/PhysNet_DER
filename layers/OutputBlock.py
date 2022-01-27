@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from .DenseLayer import DenseLayer
 from .ResidualLayer import ResidualLayer
-from .activation_fn import ActivationFN
+from .activation_fn import *
 
 class OutputBlock(nn.Module):
     
@@ -11,7 +11,7 @@ class OutputBlock(nn.Module):
         super(OutputBlock,self).__init__()
         self.device = device
         self.activation_fn = activation_fn
-        self.residual_layer = nn.ModuleList([ResidualLayer(F,F,activation_fn=activation_fn,
+        self.residual_layer = nn.ModuleList([ResidualLayer(F,F,activation_fn=self.activation_fn,
                                                            rate=rate,device=self.device) for _ in range(num_residual)])
         #   nn.Sequential(
         #      *[ResidualLayer(F,F,activation_fn=activation_fn,rate=rate,device=self.device) for _ in range(num_residual)])
@@ -24,8 +24,7 @@ class OutputBlock(nn.Module):
             x = self.residual_layer[i](x)
 
         if self.activation_fn is not None:
-            m = ActivationFN()
-            x = m(self.activation_fn, x)
+            x = self.activation_fn(x)
 
-        x2 = self.dense(x)
-        return x2
+        # x = self.dense(x)
+        return self.dense(x)

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .activation_fn import ActivationFN
+from .activation_fn import *
 
 class DenseLayer(nn.Module):
     
@@ -21,8 +21,7 @@ class DenseLayer(nn.Module):
 
     def forward(self,x):
         if self.activation_fn is not None:
-            m = ActivationFN().to(self.device)
-            x1 = m(self.activation_fn,self.linear(x))
+            x1 = self.activation_fn(self.linear(x))
         else:
             x1 = self.linear(x)
         return x1
