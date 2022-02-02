@@ -307,7 +307,7 @@ else:
 # Loss function
 #------------------------------------
 
-def evidential_loss_new(mu, v, alpha, beta, targets, lam=1, epsilon=1e-4):
+def evidential_loss_new(mu, v, alpha, beta, targets, lam=0.4, epsilon=1e-4):
     """
     I use 0.2 as the found it as the best value on their paper.
     Use Deep Evidential Regression negative log likelihood loss + evidential
@@ -337,7 +337,7 @@ def evidential_loss_new(mu, v, alpha, beta, targets, lam=1, epsilon=1e-4):
 
     # Loss = L_NLL + L_REG
     # TODO If we want to optimize the dual- of the objective use the line below:
-    loss = L_NLL + lam * (L_REG - epsilon) + l2_regularizer(model)
+    loss = L_NLL + lam * (L_REG - epsilon)
 
     return loss
 
@@ -346,7 +346,7 @@ def gauss_loss(mu,sigma,targets):
     This defines a simple loss function for learning the log-likelihood of a gaussian distribution.
     In the future, we should use a regularizer.
     """
-    loss = 0.5*np.log(2*np.pi) + 0.5*torch.log(sigma**2) + ((targets-mu)**2)/(2*sigma**2) + l2_regularizer(model)
+    loss = 0.5*np.log(2*np.pi) + 0.5*torch.log(sigma**2) + ((targets-mu)**2)/(2*sigma**2)
 
     return loss
 
@@ -378,7 +378,7 @@ def evidential_loss(mu, v, alpha, beta, targets):
     # Calculate regularizer
     L_REG = torch.pow((targets - mu), 2) * (2 * alpha + v)
 
-    loss_val = L_SOS + L_REG + l2_regularizer(model)
+    loss_val = L_SOS + L_REG
 
     return loss_val
 # ------------------------------------------------------------------------------
@@ -455,7 +455,7 @@ def evid_train_step(batch,num_t,loss_avg_t, emse_avg_t, emae_avg_t,pnorm,gnorm,d
         model.energy_evidential(Z_t, R_t, idx_i_t, idx_j_t, Qref_t, batch_seg=batch_seg_t)
     mae_energy = torch.mean(torch.abs(energy_t - Eref_t))
     mse_energy = torch.mean(torch.square(energy_t-Eref_t))
-    loss_t = evidential_loss_new(energy_t, lambdas_t, alpha_t, beta_t, Eref_t).sum()
+    loss_t = (evidential_loss_new(energy_t, lambdas_t, alpha_t, beta_t, Eref_t)  + l2_regularizer(model)).sum()
     loss_t.backward(retain_graph=True)
     # lr_schedule.step(loss)
     # #Gradient clip
@@ -495,7 +495,7 @@ def gauss_train_step(batch,num_t,loss_avg_t, emse_avg_t, emae_avg_t,device,maxno
     mae_energy = torch.mean(torch.abs(energy_t - Eref_t))
     mse_energy = torch.mean(torch.square(energy_t - Eref_t))
 
-    loss_t = gauss_loss(energy_t, lambdas_t, Eref_t).sum()
+    loss_t = (gauss_loss(energy_t, lambdas_t, Eref_t) + l2_regularizer(model)).sum()
     loss_t.backward(retain_graph=True)
     # lr_schedule.step(loss)
     # #Gradient clip
@@ -799,7 +799,7 @@ while epoch <= args.max_steps:
                     results_b["energy_mae_best"]))
 
     # Increment epoch number
-    lr_schedule.step()
+    # lr_schedule.step()
     epoch += 1
 
 
