@@ -211,7 +211,6 @@ class PhysNet(nn.Module):
             param.requires_grad = self.requires_grad_dict[name]
 
     def eval(self):
-        #Do i need this?
         super(PhysNet,self).eval()
         for name, param in self.named_parameters():
             param.requires_grad = False
@@ -235,10 +234,7 @@ class PhysNet(nn.Module):
         alphas = torch.nn.Softplus()(logalphas) + min_val + 1  # add 1 for numerical contraints of Gamma function
         betas = torch.nn.Softplus()(logbetas) + min_val
 
-        # Return these parameters as the output of the model
-        output = torch.stack((lambdas, alphas, betas),
-                             dim=1)
-        return output
+        return lambdas, alphas, betas
 
 
     def calculate_interatomic_distances(self, R, idx_i, idx_j, offsets=None):
@@ -295,16 +291,15 @@ class PhysNet(nn.Module):
                 nhloss = nhloss + torch.mean(out2 / (out2 + lastout2 + 1e-7))
             lastout2 = out2
             # Apply scaling/shifting
-        out_e = self.evidential_layer(lambdas, alpha, beta)
         Ea = self.Escale[Z.type(torch.int64)] * Ea \
             + self.Eshift[Z.type(torch.int64)]
 
         Qa = self.Qscale[Z.type(torch.int64)] * Qa \
             + self.Qshift[Z.type(torch.int64)]
 
-        lambdas = self.lscale[Z.type(torch.int64)] * out_e[:,0]
-        alpha = self.ascale[Z.type(torch.int64)]* out_e[:,1]
-        beta = self.bscale[Z.type(torch.int64)] * out_e[:,2]
+        lambdas = self.lscale[Z.type(torch.int64)] * lambdas
+        alpha = self.ascale[Z.type(torch.int64)]* alpha
+        beta = self.bscale[Z.type(torch.int64)] * beta
 
         return Ea,lambdas, alpha, beta, Qa, Dij_lr, nhloss
 
@@ -434,6 +429,9 @@ class PhysNet(nn.Module):
         lambdas = torch.squeeze(segment_sum(lambdas,batch_seg,device=self.device))
         alpha = torch.squeeze(segment_sum(alpha,batch_seg,device=self.device))
         beta = torch.squeeze(segment_sum(beta,batch_seg,device=self.device))
+
+        lambdas, alpha, beta = self.evidential_layer(lambdas, alpha, beta)
+
         return Ea,lambdas,alpha,beta
 
     @torch.jit.export

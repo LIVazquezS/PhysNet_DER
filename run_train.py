@@ -21,7 +21,6 @@ from NeuralNet import gather_nd
 from DataContainer import DataContainer
 #Other importations
 import functools
-from tep import train, predict
 from utils import NoamLR
 # Configure logging environment
 logging.basicConfig(filename='train.log', level=logging.DEBUG)
@@ -237,7 +236,7 @@ def reset_averages(type,device='cpu'):
     elif type == "valid":
         return null_float, null_float, null_float, null_float
 
-def l2_regularizer(model,l2_lambda=0.001):
+def l2_regularizer(model,l2_lambda=args.l2lambda):
     l2_norm = sum(p.pow(2.0).sum() for p in model.parameters())
     return l2_lambda*l2_norm
 
@@ -309,7 +308,6 @@ else:
 
 def evidential_loss_new(mu, v, alpha, beta, targets, lam=0.4, epsilon=1e-4):
     """
-    I use 0.2 as the found it as the best value on their paper.
     Use Deep Evidential Regression negative log likelihood loss + evidential
         regularizer
     We will use the new version on the paper..
@@ -337,7 +335,7 @@ def evidential_loss_new(mu, v, alpha, beta, targets, lam=0.4, epsilon=1e-4):
 
     # Loss = L_NLL + L_REG
     # TODO If we want to optimize the dual- of the objective use the line below:
-    loss = L_NLL + lam * (L_REG - epsilon)
+    loss = L_NLL + lam * (L_REG - epsilon) + l2_regularizer(model)
 
     return loss
 
@@ -346,7 +344,7 @@ def gauss_loss(mu,sigma,targets):
     This defines a simple loss function for learning the log-likelihood of a gaussian distribution.
     In the future, we should use a regularizer.
     """
-    loss = 0.5*np.log(2*np.pi) + 0.5*torch.log(sigma**2) + ((targets-mu)**2)/(2*sigma**2)
+    loss = 0.5*np.log(2*np.pi) + 0.5*torch.log(sigma**2) + ((targets-mu)**2)/(2*sigma**2) + l2_regularizer(model)
 
     return loss
 
@@ -378,7 +376,7 @@ def evidential_loss(mu, v, alpha, beta, targets):
     # Calculate regularizer
     L_REG = torch.pow((targets - mu), 2) * (2 * alpha + v)
 
-    loss_val = L_SOS + L_REG
+    loss_val = L_SOS + L_REG  + l2_regularizer(model)
 
     return loss_val
 # ------------------------------------------------------------------------------
@@ -455,7 +453,7 @@ def evid_train_step(batch,num_t,loss_avg_t, emse_avg_t, emae_avg_t,pnorm,gnorm,d
         model.energy_evidential(Z_t, R_t, idx_i_t, idx_j_t, Qref_t, batch_seg=batch_seg_t)
     mae_energy = torch.mean(torch.abs(energy_t - Eref_t))
     mse_energy = torch.mean(torch.square(energy_t-Eref_t))
-    loss_t = (evidential_loss_new(energy_t, lambdas_t, alpha_t, beta_t, Eref_t)  + l2_regularizer(model)).sum()
+    loss_t = evidential_loss_new(energy_t, lambdas_t, alpha_t, beta_t, Eref_t).sum()
     loss_t.backward(retain_graph=True)
     # lr_schedule.step(loss)
     # #Gradient clip
@@ -530,7 +528,7 @@ def evid_valid_step(batch,num_v,loss_avg_v, emse_avg_v, emae_avg_v,device):
             model.energy_evidential(Z_v, R_v, idx_i_v, idx_j_v, Qref_v, batch_seg=batch_seg_v)
 
     # loss
-    loss_v = evidential_loss(energy_v, lambdas_v, alpha_v, beta_v, Eref_v).sum()
+    loss_v = evidential_loss_new(energy_v, lambdas_v, alpha_v, beta_v, Eref_v).sum()
     mae_energy = torch.mean(torch.abs(energy_v - Eref_v))
     mse_energy = torch.mean(torch.square(energy_v - Eref_v))
     f = num_v / (num_v + N_v.dim())
@@ -585,7 +583,7 @@ logging.info("starting training...")
 optimizer = torch.optim.Adam(params=model.parameters(), lr=args.learning_rate,
                              weight_decay=args.l2lambda,amsgrad=True)
 
-lr_schedule = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.decay_rate)
+lr_schedule = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=np.power(args.decay_rate,1/args.decay_steps))
 # lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,factor=args.decay_rate,patience=2,verbose=True)
 # lr_schedule = NoamLR(optimizer=optimizer,warmup_epochs=[2.0],total_epochs=[args.max_steps],
 #                      steps_per_epoch=args.num_train // args.batch_size,
@@ -799,7 +797,7 @@ while epoch <= args.max_steps:
                     results_b["energy_mae_best"]))
 
     # Increment epoch number
-    # lr_schedule.step()
+    lr_schedule.step()
     epoch += 1
 
 

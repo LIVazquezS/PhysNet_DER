@@ -194,8 +194,8 @@ class PhysNetCalculator(Calculator):
             # self._last_energy, lambdas, alpha, beta = torch.split(out1,
             #                                                              out1.shape[1]//4,
             #                                                              dim=1)
-            self._sigma2 = beta/(alpha-1)
-            self._var = (1/lambdas)*self.sigma2
+            self._sigma2 = beta.detach().cpu().numpy()/(alpha.detach().cpu().numpy()-1)
+            self._var = (1/lambdas.detach().cpu().numpy())*self.sigma2
 
 
         # Convert results to numpy array
