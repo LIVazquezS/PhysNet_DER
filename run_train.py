@@ -17,7 +17,7 @@ from time import time
 from Neural_Net_evid import PhysNet
 from layers.utils import segment_sum
 from layers.activation_fn import *
-from NeuralNet import gather_nd
+from Neural_Net_evid import gather_nd
 from DataContainer import DataContainer
 #Other importations
 import functools

@@ -2,6 +2,4 @@
 Based on the Pytorch version of PhysNet, an evidential layer is implemented. 
 
 ## To Do:
-- Run in gpu
-- Check results
 
