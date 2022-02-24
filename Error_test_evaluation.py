@@ -11,6 +11,7 @@ from DataContainer import *
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from scipy import stats
 
 # define command line arguments
 parser = argparse.ArgumentParser(fromfile_prefix_chars='@')
@@ -179,14 +180,19 @@ test_batches = data.get_test_batches()
 
 for ib, batch in enumerate(test_batches):
     energy_test_list, Eref_test_list, mae_energy, mse_energy, rmse_energy, var = evid_test_step(batch,args.device)
+    slope, intercept, r, p, se = stats.linregress(energy_test_list, Eref_test_list)
+    rsquare = r**2
     print('MAE(kcal/mol): {:.4}'.format(mae_energy*23))
     print('RMSE(kcal/mol): {:.4}'.format(rmse_energy*23))
+    print('R^2(Pearson correlation coefficient: {:.4}'.format(rsquare))
     E_by_mol = np.abs(energy_test_list - Eref_test_list)
     dct = {'Energy Reference(eV)': Eref_test_list, 'Energy Test(eV)': energy_test_list, 'Error(eV)': E_by_mol, 'Variance(eV)': var}
     df = pd.DataFrame(dct)
     fig, ax = plt.subplots()
     sns.regplot(x='Energy Reference(eV)', y='Energy Test(eV)', data=df,ax=ax)
     ax.errorbar(energy_test_list, Eref_test_list, yerr=var, fmt='none',capsize=5, zorder=1,color='C0')
+    ax.text(0.7, 0.1, (r'$[%.2f,%.2f,%.2f]$' % (rsquare,mae_energy, rmse_energy)), transform=ax.transAxes, fontsize=10,
+             verticalalignment='top')
     plt.show()
     #Optional
     df.to_csv('Results_on_test_set.csv', index=False)
