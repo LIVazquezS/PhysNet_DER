@@ -139,6 +139,21 @@ class DataContainer:
                 self.valid_data.append(i)
             else:
                 self.valid_data.append(torch.zeros(self.nvalid))
+
+        test_data_all = [
+            self.N(self.idx_test), self.Z(self.idx_test),
+            self.R(self.idx_test), self.E(self.idx_test),
+            self.Ea(self.idx_test), self.F(self.idx_test),
+            self.Q(self.idx_test), self.Qa(self.idx_test),
+            self.D(self.idx_test)]
+
+        self.test_data = [ ]
+        for i in test_data_all:
+            if i is not None:
+                self.test_data.append(i)
+            else:
+                self.test_data.append(torch.zeros(self.nvalid))
+
         
     def get_train_batches(self, batch_size=None):
         
@@ -171,7 +186,18 @@ class DataContainer:
         
         return valid_batches
 
+    def get_test_batches(self, batch_size=None):
 
+        # Set batch custom size
+        if batch_size is None:
+            batch_size = self.ntest
+        # Transform data to tensor dataset
+        tensor_data_test = data.TensorDataset(*self.test_data)
+
+        # Divide validation data into batches
+        test_batches = data.DataLoader(tensor_data_test, batch_size=batch_size)
+
+        return test_batches
 
 
     def _compute_E_statistics(self):
