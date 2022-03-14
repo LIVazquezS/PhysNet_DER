@@ -8,7 +8,7 @@ class DataContainer:
          return "DataContainer"
     
     def __init__(
-        self, filename, ntrain, nvalid, batch_size=1, valid_batch_size=1, 
+        self, filename, ntrain, nvalid, batch_size=1, valid_batch_size=1, test_batch_size=1,
         seed=None, dtype=torch.float32):
         
         # Read in data
@@ -89,6 +89,7 @@ class DataContainer:
         self.ntest = self.ndata - self.ntrain - self.nvalid
         self.batch_size = batch_size
         self.valid_batch_size = valid_batch_size
+        self.test_batch_size = test_batch_size
         self.dtype = dtype
         
         # Random state parameter for reproducible random operations
@@ -152,7 +153,7 @@ class DataContainer:
             if i is not None:
                 self.test_data.append(i)
             else:
-                self.test_data.append(torch.zeros(self.nvalid))
+                self.test_data.append(torch.zeros(self.ntest))
 
         
     def get_train_batches(self, batch_size=None):
@@ -190,7 +191,7 @@ class DataContainer:
 
         # Set batch custom size
         if batch_size is None:
-            batch_size = self.ntest
+            batch_size = self.test_batch_size
         # Transform data to tensor dataset
         tensor_data_test = data.TensorDataset(*self.test_data)
 
