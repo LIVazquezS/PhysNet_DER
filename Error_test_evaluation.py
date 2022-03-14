@@ -81,7 +81,7 @@ model = PhysNet(
     device=args.device)
 
 # TODO: Add the option to load and evaluate multiple models as the same time
-checkpoints = ["best_model.pt"]
+checkpoints = ["20220223145748_f8gCMPyd_F128K64b5a2i3o1cut10.0e0d0rate0.0/best/best_model.pt"]
 def load_checkpoint(checkpoints):
     if checkpoints[0] is not None:
         checkpoint = torch.load(checkpoints[0])
@@ -178,22 +178,49 @@ data = DataContainer(
 
 test_batches = data.get_test_batches()
 
+MAE_by_batch = []
+RMSE_by_batch = []
+energies_by_batch = []
+Eref_by_batch = []
+var_by_batch = []
+Error_by_mol_batch = []
 for ib, batch in enumerate(test_batches):
     energy_test_list, Eref_test_list, mae_energy, mse_energy, rmse_energy, var = evid_test_step(batch,args.device)
-    slope, intercept, r, p, se = stats.linregress(energy_test_list, Eref_test_list)
-    rsquare = r**2
-    print('MAE(kcal/mol): {:.4}'.format(mae_energy*23))
-    print('RMSE(kcal/mol): {:.4}'.format(rmse_energy*23))
-    print('R^2(Pearson correlation coefficient: {:.4}'.format(rsquare))
     E_by_mol = np.abs(energy_test_list - Eref_test_list)
-    dct = {'Energy Reference(eV)': Eref_test_list, 'Energy Test(eV)': energy_test_list, 'Error(eV)': E_by_mol, 'Variance(eV)': var}
-    df = pd.DataFrame(dct)
+    Error_by_mol_batch.extend(E_by_mol)
+    MAE_by_batch.append(mae_energy)
+    RMSE_by_batch.append(rmse_energy)
+    energies_by_batch.extend(energy_test_list)
+    Eref_by_batch.extend(Eref_test_list)
+    var_by_batch.extend(var)
+
+
+MAE_final = np.mean(MAE_by_batch)
+RMSE_final = np.mean(RMSE_by_batch)
+print('MAE(kcal/mol): {:.4}'.format(MAE_final*23))
+print('RMSE(kcal/mol): {:.4}'.format(RMSE_final*23))
+
+save = False
+plot = True
+save_plot = False
+
+
+slope, intercept, r, p, se = stats.linregress(energies_by_batch, Eref_by_batch)
+rsquare = r ** 2
+print('R^2(Pearson correlation coefficient: {:.4}'.format(rsquare))
+dct = {'Energy Reference(eV)': energies_by_batch, 'Energy Test(eV)': Eref_by_batch, 'Error(eV)': Error_by_mol_batch, 'Variance(eV)': var_by_batch}
+df = pd.DataFrame(dct)
+if save:
+    df.to_csv('Results_on_test_set.csv', index=False)
+
+if plot:
     fig, ax = plt.subplots()
     sns.regplot(x='Energy Reference(eV)', y='Energy Test(eV)', data=df,ax=ax)
-    ax.errorbar(energy_test_list, Eref_test_list, yerr=var, fmt='none',capsize=5, zorder=1,color='C0')
-    ax.text(0.7, 0.1, (r'$[%.2f,%.2f,%.2f]$' % (rsquare,mae_energy, rmse_energy)), transform=ax.transAxes, fontsize=10,
+    ax.errorbar(energies_by_batch, Eref_by_batch, yerr=var_by_batch, fmt='none',capsize=5, zorder=1,color='C0')
+    ax.text(0.7, 0.1, (r'$[%.2f,%.2f,%.2f]$' % (rsquare,MAE_final, RMSE_final)), transform=ax.transAxes, fontsize=10,
              verticalalignment='top')
     plt.show()
-    #Optional
-    df.to_csv('Results_on_test_set.csv', index=False)
+    if save_plot:
+        fig.savefig('evidential_test_set.pdf', bbox_inches='tight')
+
 
