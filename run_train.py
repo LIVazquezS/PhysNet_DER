@@ -727,7 +727,7 @@ while epoch <= args.max_steps:
 
         # Stop valid timer
         valid_end = time()
-        time_valid = valid_end - valid_end
+        time_valid = valid_end - valid_start
 
         # Update validation results
         results_v = {}
@@ -765,16 +765,16 @@ while epoch <= args.max_steps:
             # Save best model variables
             save_checkpoint(model=model, epoch=epoch, optimizer=optimizer,best=True)
 
-        # Update best results
-        results_b = {}
-        results_b["loss_best"] = best_loss
-        if data.include_E:
-            results_b["energy_mae_best"] = best_emae
-            results_b["energy_rmse_best"] = best_ermse
+            # Update best results
+            results_b = {}
+            results_b["loss_best"] = best_loss
+            if data.include_E:
+                results_b["energy_mae_best"] = best_emae
+                results_b["energy_rmse_best"] = best_ermse
 
-        # Write the results to tensorboard
-        for key, value in results_b.items():
-            summary_writer.add_scalar(key, value, global_step=epoch)
+             # Write the results to tensorboard
+            for key, value in results_b.items():
+                summary_writer.add_scalar(key, value, global_step=epoch)
 
 
         # for var, bck in zip(model.trainable_variables, backup_vars):
