@@ -179,9 +179,9 @@ class PhysNet(nn.Module):
         self.Qscale = nn.Parameter(torch.empty(95,device=self.device).new_full((95,), Qscale).type(dtype))
 
         # Output scale for extra variables
-        self.ascale = nn.Parameter(torch.ones(95, device=self.device, dtype=dtype)).new_full((95,), Escale ** 2).type(dtype)
-        self.bscale = nn.Parameter(torch.ones(95, device=self.device, dtype=dtype)).new_full((95,), Escale ** 2).type(dtype)
-        self.lscale = nn.Parameter(torch.ones(95, device=self.device, dtype=dtype)).new_full((95,), Escale ** 2).type(dtype)
+        self.ascale = nn.Parameter(torch.ones(95, device=self.device, dtype=dtype))
+        self.bscale = nn.Parameter(torch.ones(95, device=self.device, dtype=dtype))
+        self.lscale = nn.Parameter(torch.ones(95, device=self.device, dtype=dtype))
         # self.ashift = nn.Parameter(torch.zeros(95,device=self.device,dtype=dtype))
         # self.bshift = nn.Parameter(torch.zeros(95, device=self.device, dtype=dtype))
         # self.lshift = nn.Parameter(torch.zeros(95, device=self.device, dtype=dtype))
