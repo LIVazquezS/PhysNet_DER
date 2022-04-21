@@ -45,12 +45,16 @@ parser.add_argument("--ema_decay", default=0.999, type=float)
 parser.add_argument("--rate", default=0.0, type=float)
 parser.add_argument("--l2lambda", default=0.0, type=float)
 parser.add_argument("--nhlambda", default=0.1, type=float)
+#Note: This parameter is setup to 0.2 as it was the best value on the paper of Amini...
+parser.add_argument("--lambda_conf", default=0.2, type=float,
+                    help="Lambda value of the confidence of the prediction")
 parser.add_argument("--summary_interval", default=5, type=int)
 parser.add_argument("--validation_interval", default=5, type=int)
 parser.add_argument("--show_progress", default=True, type=bool)
 parser.add_argument("--save_interval", default=5, type=int)
 parser.add_argument("--record_run_metadata", default=0, type=int)
 parser.add_argument('--device', default='cuda', type=str)
+parser.add_argument('--checkpoint', default='', type=str)
 
 # if no command line arguments are present, config file is parsed
 config_file = 'config.txt'
@@ -81,7 +85,7 @@ model = PhysNet(
     device=args.device)
 
 # TODO: Add the option to load and evaluate multiple models as the same time
-checkpoints = ["20220223145748_f8gCMPyd_F128K64b5a2i3o1cut10.0e0d0rate0.0/best/best_model.pt"]
+checkpoints = [args.checkpoint]
 def load_checkpoint(checkpoints):
     if checkpoints[0] is not None:
         checkpoint = torch.load(checkpoints[0])
@@ -92,8 +96,6 @@ def load_checkpoint(checkpoints):
 latest_ckpt = load_checkpoint(checkpoints)
 
 model.load_state_dict(latest_ckpt['model_state_dict'])
-
-
 
 def get_indices(Nref,device='cpu'):
     # Get indices pointing to batch image
@@ -169,7 +171,68 @@ def evid_test_step(batch,device):
     mae_energy = torch.mean(torch.abs(energy_test - Eref_test)).cpu().numpy()
     mse_energy = torch.mean(torch.square(energy_test - Eref_test)).cpu().numpy()
     rmse_energy = np.sqrt(mse_energy)
-    return energy_test_list, Eref_test_list, mae_energy, mse_energy, rmse_energy, var
+    return energy_test_list, Eref_test_list, mae_energy, mse_energy, rmse_energy, var,sigma2
+
+def num_to_label(array):
+    labels = []
+    for j in array:
+        l = j
+        if l == 0:
+            continue
+        elif l == 1:
+            labels.append('H')
+        elif l == 6:
+            labels.append('C')
+        elif l == 7:
+            labels.append('N')
+        elif l == 8:
+            labels.append('O')
+        else:
+            print("UNKNOWN ATOM", l)
+            quit()
+    return labels
+
+#
+def write(N_e,Z_e,R_e,E_e,id,folder,save=True):
+    atom_template = '{:3s} \t {:15.10f} \t {:15.10f} \t {:15.10f} '
+    for i,j in enumerate(N_e):
+        block = []
+        block.append(int(j))
+        block.append(E_e[i])
+        for element, (x, y, z) in zip(Z_e[i], R_e[i]):
+            block.append(atom_template.format(element, x, y, z))
+
+        if save:
+            if os.path.exists(folder):
+                os.chdir(folder)
+            else:
+                os.makedirs(folder)
+                os.chdir(folder)
+
+            with open('error_{}_{}.xyz'.format(id,i), 'w') as f:
+                for item in block:
+                    f.write("%s\n" % item)
+            os.chdir('..')
+        else:
+            print(block)
+
+
+def get_error_mols(folder,id,batch,var):
+    perc = np.percentile(var, 95)
+    indexes = np.argwhere(var > perc)
+    batch = [i.detach().cpu().numpy() for i in batch]
+    N, Z, R, E, _, _, _, _, _ = batch
+    N_e = []
+    Z_e = []
+    R_e = []
+    E_e = []
+    for j in range(len(indexes)):
+        value = indexes[j][0]
+        N_e.append(N[value])
+        Z_e.append(num_to_label(Z[value]))
+        R_e.append(R[value])
+        E_e.append(E[value])
+    write(N_e,Z_e,R_e,E_e,id,folder)
 
 # load dataset
 data = DataContainer(
@@ -177,41 +240,49 @@ data = DataContainer(
     args.batch_size, args.valid_batch_size, seed=args.seed)
 
 test_batches = data.get_test_batches()
+print("Number of test batches:", len(test_batches))
+eshift = data.EperA_m_n # The energy shift is the mean energy of the training dataset
+escale = data.EperA_s_n # the energy scale is the standard deviation of the training dataset
 
 MAE_by_batch = []
 RMSE_by_batch = []
 energies_by_batch = []
 Eref_by_batch = []
 var_by_batch = []
+sigma2_by_batch = []
 Error_by_mol_batch = []
 for ib, batch in enumerate(test_batches):
-    energy_test_list, Eref_test_list, mae_energy, mse_energy, rmse_energy, var = evid_test_step(batch,args.device)
+    energy_test_list, Eref_test_list, mae_energy, mse_energy, rmse_energy, var,sigma2 = evid_test_step(batch,args.device)
     E_by_mol = np.abs(energy_test_list - Eref_test_list)
+    get_error_mols('Error_1.0',ib,batch,var)
     Error_by_mol_batch.extend(E_by_mol)
     MAE_by_batch.append(mae_energy)
     RMSE_by_batch.append(rmse_energy)
     energies_by_batch.extend(energy_test_list)
     Eref_by_batch.extend(Eref_test_list)
     var_by_batch.extend(var)
+    sigma2_by_batch.extend(sigma2)
 
-
+# p = np.argwhere(np.array(var_by_batch) > 1.0)
+#
+# print(p)
 MAE_final = np.mean(MAE_by_batch)
 RMSE_final = np.mean(RMSE_by_batch)
 print('MAE(kcal/mol): {:.4}'.format(MAE_final*23))
 print('RMSE(kcal/mol): {:.4}'.format(RMSE_final*23))
-
+#TODO: Make this as a flag
 save = False
-plot = True
+plot = False
 save_plot = False
 
 
 slope, intercept, r, p, se = stats.linregress(energies_by_batch, Eref_by_batch)
 rsquare = r ** 2
 print('R^2(Pearson correlation coefficient: {:.4}'.format(rsquare))
-dct = {'Energy Reference(eV)': energies_by_batch, 'Energy Test(eV)': Eref_by_batch, 'Error(eV)': Error_by_mol_batch, 'Variance(eV)': var_by_batch}
+dct = {'Energy Reference(eV)': energies_by_batch, 'Energy Test(eV)': Eref_by_batch, 'Error(eV)': Error_by_mol_batch, 'Variance(eV)': var_by_batch,'sigma2':sigma2_by_batch}
 df = pd.DataFrame(dct)
 if save:
-    df.to_csv('Results_on_test_set.csv', index=False)
+    df.to_csv('Results_t.csv', index=False)
 
 if plot:
     fig, ax = plt.subplots()
@@ -221,6 +292,6 @@ if plot:
              verticalalignment='top')
     plt.show()
     if save_plot:
-        fig.savefig('evidential_test_set.pdf', bbox_inches='tight')
+        fig.savefig('evidential_test_set_scale.pdf', bbox_inches='tight')
 
 

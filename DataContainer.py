@@ -153,7 +153,7 @@ class DataContainer:
             if i is not None:
                 self.test_data.append(i)
             else:
-                self.test_data.append(torch.zeros(self.ntest))
+                self.test_data.append(torch.zeros(self.nvalid))
 
         
     def get_train_batches(self, batch_size=None):
