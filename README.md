@@ -24,9 +24,12 @@ For the moment, our model can be trained by `.npz` file generated from `.xyz` fi
 
 ```
 python gen_db.py -f folder_with_.xyz_files -o name_of_npz_file
-
 ```
-You should add the path to the folder with your `.xyz` files and the desired name for your database.
+You should add the path to the folder with your `.xyz` files and the desired name for your database. 
+The generated `.npz` file will be saved in the current directory, we recommend to move it to a directory called `data`.
+
+*Note: File `gen_db.py` contains the values of the atomization energies of QM9 by default. You can change the values by editing the file.*
+
 
 ### Running a model
 
@@ -34,7 +37,6 @@ To run the model, you modify the desired values on the `input.inp` file and then
 
 ```
 python run_train.py @input.inp
-
 ```
 
 ### Evaluating a molecule with a trained model
@@ -43,11 +45,15 @@ If you wish to evaluate a molecule with a trained model. You can use the example
 
 ```
 python calc_energy.py -i file_to_eval.xyz
-
 ```
-It will return a value for the energy of the molecule, the variance(epistemic uncertainty) and sigma(aleatory uncertainty). 
+It will return a value for the energy of the molecule, the variance(epistemic uncertainty) and sigma(aleatory uncertainty).
+
 *Note: The sigma(aleatory uncertainty) can be recovered by dividing the variance with nu*
-*Note2: If your evaluation is done in a computer without gpu, you should set up the variable device to 'cpu'*
+
+*Note2: If your evaluation(or training) is done in a computer without gpu, you should set up the variable device to 'cpu'*
 
 ## To Do:
+
+- Add other types of formats for the databases
+- Make a better documentation
 

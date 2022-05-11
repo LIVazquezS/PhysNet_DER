@@ -98,7 +98,7 @@ parser.add_argument("--rate", default=0.0, type=float,
 parser.add_argument("--l2lambda", default=0.0, type=float,
                     help="Lambda multiplier for l2 loss (regularization)")
 #Note: This parameter is setup to 0.2 as it was the best value on the paper of Amini...
-parser.add_argument("--lambda_conf", default=0.2, type=float,
+parser.add_argument("--lambda_conf", default=0.4, type=float,
                     help="Lambda value of the confidence of the prediction")
 parser.add_argument('--summary_interval', default=5, type=int,
                     help="Write a summary every N steps")

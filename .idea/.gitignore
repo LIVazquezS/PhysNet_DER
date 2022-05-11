@@ -1,6 +1,13 @@
 # Default ignored files
 /shelf/
 /workspace.xml
+/*.xyz
+/*.png
+/*.pt
+/*.csv
+/*.log
+/comparing_rdf_layers.py
+
 # Editor-based HTTP Client requests
 /httpRequests/
 # Datasource local storage ignored files
