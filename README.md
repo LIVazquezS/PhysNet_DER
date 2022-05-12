@@ -9,7 +9,7 @@ We recommend to use [ Miniconda](https://docs.conda.io/projects/conda/en/latest/
 Once in miniconda, you can create a virtual enviroment called *physnet_torch* from the `.yml` file with the following command
 
 ``` 
-conda env create --file enviroment.yml
+conda env create --file environment.yml
 ```
  
 To activate the virtual environment use the command:
