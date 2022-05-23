@@ -66,6 +66,7 @@ class PhysNetCalculator(Calculator):
         parser.add_argument("--rate", default=0.0, type=float)
         parser.add_argument("--l2lambda", default=0.0, type=float)
         parser.add_argument("--nhlambda", default=0.1, type=float)
+        parser.add_argument("--lambda_conf",default=0.2,type=float)
         parser.add_argument("--summary_interval", default=5, type=int)
         parser.add_argument("--validation_interval", default=5, type=int)
         parser.add_argument("--show_progress", default=True, type=bool)
