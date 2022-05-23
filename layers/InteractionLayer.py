@@ -30,7 +30,7 @@ class InteractionLayer(nn.Module):
         #     *[ResidualLayer(F, F, activation_fn=self.activation_fn, rate=self.rate,device=self.device) for _ in range(num_residual)]
         # )
         # For performing the final update to the feature vectors
-        self.dense = DenseLayer(F, F, activation_fn=self.activation_fn,device=self.device)
+        self.dense = DenseLayer(F, F,device=self.device)
         self.u = nn.Parameter(torch.ones([F], device=self.device,dtype=torch.float32))
 
         # torch.histogram(self.u)
