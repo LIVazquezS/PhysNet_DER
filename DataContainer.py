@@ -8,7 +8,7 @@ class DataContainer:
          return "DataContainer"
     
     def __init__(
-        self, filename, ntrain, nvalid, batch_size=1, valid_batch_size=1,
+        self, filename, ntrain, nvalid, batch_size=1, valid_batch_size=1, test_batch_size=1,
         seed=None, dtype=torch.float32):
         
         # Read in data
@@ -90,6 +90,7 @@ class DataContainer:
         self.batch_size = batch_size
         self.valid_batch_size = valid_batch_size
         self.test_batch_size = valid_batch_size
+        self.test_batch_size = test_batch_size
         self.dtype = dtype
         
         # Random state parameter for reproducible random operations

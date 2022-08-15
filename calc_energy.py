@@ -25,7 +25,7 @@ calc = PhysNetCalculator(
     checkpoint="20220126204027_jYRFUzG7_F128K64b5a2i3o1cut10.0e0d0rate0.0/best/best_model.pt",
     atoms=atoms,
     charge=args.charge,
-    config='input1.inp')
+    config='input.inp')
 
 #'attach' calculator to atoms object
 atoms.set_calculator(calc)

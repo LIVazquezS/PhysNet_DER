@@ -199,9 +199,6 @@ class PhysNet(nn.Module):
             F, num_residual_output, n_output=4, activation_fn=self.activation_fn, rate=self.rate,device=self.device)
             for _ in range(self.num_blocks)])
 
-        self.output_block_gauss = nn.ModuleList([OutputBlock(
-            F, num_residual_output, n_output=2, activation_fn=self.activation_fn, rate=self.rate,device=self.device)
-            for _ in range(self.num_blocks)])
 
         self.build_requires_grad_dict()
     def train(self, mode=True):
@@ -249,7 +246,7 @@ class PhysNet(nn.Module):
         Dij = torch.sqrt(m)
         # ReLU: y = max(0, x), prevent negative sqrt
         return Dij
-
+    @torch.jit.export
     def evidential_atomic_properties(self, Z, R, idx_i, idx_j, offsets=None, sr_idx_i=None, sr_idx_j=None,
                     sr_offsets=None):
         ''' Calculate evidential atomic properties '''
@@ -303,55 +300,6 @@ class PhysNet(nn.Module):
 
         return Ea,lambdas, alpha, beta, Qa, Dij_lr, nhloss
 
-    def gauss_atomic_properties(self, Z, R, idx_i, idx_j, offsets=None, sr_idx_i=None, sr_idx_j=None,
-                                     sr_offsets=None):
-        ''' Calculate evidential atomic properties '''
-
-        # Calculate distances (for long range interaction)
-        Dij_lr = self.calculate_interatomic_distances(R, idx_i, idx_j, offsets=offsets)
-        # Optionally, it is possible to calculate separate distances
-        # for short range interactions (computational efficiency)
-        if sr_idx_i is not None and sr_idx_j is not None:
-            Dij_sr = self.calculate_interatomic_distances(R, sr_idx_i, sr_idx_j, offsets=sr_offsets)
-        else:
-            sr_idx_i = idx_i
-            sr_idx_j = idx_j
-            Dij_sr = Dij_lr
-
-        # Calculate radial basis function expansion
-        rbf = self.rbf_layer(Dij_sr.to(self.device)).to(self.device)
-
-        # Initialize feature vectors according to embeddings for
-        # nuclear charges
-        z_pros = Z.view(-1, 1).expand(-1, self.F).type(torch.int64)
-        x = torch.gather(self.embeddings, 0, z_pros)
-        # Apply blocks
-        Ea = 0  # atomic energy
-        Qa = 0  # atomic charge
-        sigma = 0
-        nhloss = 0  # non-hierarchicality loss
-        for i in range(self.num_blocks):
-            x = self.interaction_block[i](x, rbf, sr_idx_i, sr_idx_j)
-            out = self.output_block_gauss[i](x)
-            Ea = Ea + out[:, 0]
-            Qa = Qa + out[:, 2]
-            sigma = sigma + out[:, 1]
-            # Compute non-hierarchicality loss
-            out2 = out ** 2
-            if i > 0:
-                nhloss = nhloss + torch.mean(out2 / (out2 + lastout2 + 1e-7))
-            lastout2 = out2
-            # Apply scaling/shifting
-        Ea = self.Escale[Z.type(torch.int64)] * Ea \
-             + self.Eshift[Z.type(torch.int64)]
-
-        Qa = self.Qscale[Z.type(torch.int64)] * Qa \
-             + self.Qshift[Z.type(torch.int64)]
-
-        sigmas = self.lscale[Z.type(torch.int64)] * torch.nn.Softplus()(sigma)
-
-        return Ea, sigmas, Qa, Dij_lr, nhloss
-
     @torch.jit.export
     def atomic_properties(self, Z, R, idx_i, idx_j, offsets=None, sr_idx_i=None, sr_idx_j=None,
                     sr_offsets=None):
@@ -404,7 +352,6 @@ class PhysNet(nn.Module):
         return Ea, Qa, Dij_lr, nhloss
 
 
-
     @torch.jit.export
     def energy_evidential_from_scaled_atomic_properties(
             self, Ea,lambdas, alpha, beta, Qa, Dij, Z, idx_i, idx_j, batch_seg=None):
@@ -433,31 +380,6 @@ class PhysNet(nn.Module):
         lambdas, alpha, beta = self.evidential_layer(lambdas, alpha, beta)
 
         return Ea,lambdas,alpha,beta
-
-    @torch.jit.export
-    def energy_gauss_from_scaled_atomic_properties(
-            self, Ea,sigmas, Qa, Dij, Z, idx_i, idx_j, batch_seg=None):
-        ''' Calculates the energy given the scaled atomic properties (in order
-            to prevent recomputation if atomic properties are calculated) '''
-        if batch_seg is None:
-            batch_seg = torch.zeros_like(Z).type(torch.int64)
-
-        # Add electrostatic and dispersion contribution to atomic energy
-        if self.use_electrostatic:
-            Ea = Ea + self.electrostatic_energy_per_atom(Dij, Qa, idx_i, idx_j)
-        if self.use_dispersion:
-            if self.lr_cut is not None:
-                Ea = Ea + d3_autoev * edisp(Z, Dij / d3_autoang, idx_i, idx_j,
-                                            s6=self.s6, s8=self.s8, a1=self.a1, a2=self.a2,
-                                            cutoff=self.lr_cut / d3_autoang, device=self.device)
-            else:
-                Ea = Ea + d3_autoev * edisp(Z, Dij / d3_autoang, idx_i, idx_j,
-                                            s6=self.s6, s8=self.s8, a1=self.a1, a2=self.a2,device=self.device)
-
-        Ea = torch.squeeze(segment_sum(Ea,batch_seg,device=self.device))
-        sigmas = torch.squeeze(segment_sum(sigmas,batch_seg,device=self.device))
-
-        return Ea,sigmas
 
     @torch.jit.export
     def energy_from_scaled_atomic_properties(
@@ -525,20 +447,6 @@ class PhysNet(nn.Module):
         return self.energy_evidential_from_scaled_atomic_properties(
             Ea, lambdas, alpha, beta, Qa, Dij, Z, idx_i, idx_j, batch_seg)
 
-    @torch.jit.export
-    def energy_gauss_from_atomic_properties(
-            self, Ea, sigmas, Qa, Dij, Z, idx_i, idx_j, Q_tot=None, batch_seg=None):
-        ''' Calculates the energy given the atomic properties (in order to
-            prevent recomputation if atomic properties are calculated) '''
-
-        if batch_seg is None:
-            batch_seg = torch.zeros_like(Z).type(torch.int64)
-
-            # Scale charges such that they have the desired total charge
-        Qa = self.scaled_charges(Z, Qa, Q_tot, batch_seg)
-
-        return self.energy_gauss_from_scaled_atomic_properties(
-            Ea, sigmas, Qa, Dij, Z, idx_i, idx_j, batch_seg)
 
     @torch.jit.export
     def energy_from_atomic_properties(
@@ -592,19 +500,6 @@ class PhysNet(nn.Module):
 
         return energy, lambdas, alpha, beta
 
-    @torch.jit.export
-    def energy_gauss(self, Z, R, idx_i, idx_j, Q_tot=None, batch_seg=None, offsets=None,
-            sr_idx_i=None, sr_idx_j=None, sr_offsets=None):
-        ''' Calculates the total energy (including electrostatic
-            interactions) '''
-
-        Ea, sigmas, Qa, Dij, _ = self.gauss_atomic_properties(
-            Z, R, idx_i, idx_j, offsets, sr_idx_i, sr_idx_j, sr_offsets)
-
-        energy,sigmas = self.energy_gauss_from_atomic_properties(
-            Ea, sigmas, Qa, Dij, Z, idx_i, idx_j, Q_tot, batch_seg)
-
-        return energy,sigmas
 
     @torch.jit.export
     def energy(self, Z, R, idx_i, idx_j, Q_tot=None, batch_seg=None, offsets=None,

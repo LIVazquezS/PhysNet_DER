@@ -44,7 +44,7 @@ parser.add_argument("--max_norm", default=1000.0, type=float)
 parser.add_argument("--ema_decay", default=0.999, type=float)
 parser.add_argument("--rate", default=0.0, type=float)
 parser.add_argument("--l2lambda", default=0.0, type=float)
-parser.add_argument("--nhlambda", default=0.1, type=float)
+parser.add_argument("--nhlambda", default=0.0, type=float)
 #Note: This parameter is setup to 0.2 as it was the best value on the paper of Amini...
 parser.add_argument("--lambda_conf", default=0.2, type=float,
                     help="Lambda value of the confidence of the prediction")
