@@ -64,11 +64,11 @@ parser.add_argument("--grimme_a2", default=None, type=float,
                     help="Grimme a2 dispersion coefficient")
 parser.add_argument("--dataset", type=str,
                     help="File path to dataset")
-# This number is configured for the size of the dataset for Sn2 reeactions
-parser.add_argument("--num_train", default=362167, type=int,
+# This number is configured for the size of the QM9 dataset
+parser.add_argument("--num_train", default=103130, type=int,
                     help="Number of training samples")
-# This number is configured for the size of the dataset for Sn2 reeactions
-parser.add_argument("--num_valid", default=45000, type=int,
+# This number is configured for the size of the QM9 dataset
+parser.add_argument("--num_valid", default=12891, type=int,
                     help="Number of validation samples")
 parser.add_argument("--batch_size", default=100, type=int,
                     help="Batch size used per training step")
@@ -166,6 +166,7 @@ if not os.path.exists(best_dir):
 log_dir = os.path.join(directory, 'logs')
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
+
 ckpt_dir = os.path.join(directory, 'ckpt')
 if not os.path.exists(ckpt_dir):
     os.makedirs(ckpt_dir)
@@ -194,7 +195,6 @@ def save_checkpoint(model, epoch, optimizer, name_of_ckpt=None,best=False):
     else:
         name = 'model' + str(name_of_ckpt) + '.pt'
         path = os.path.join(ckpt_dir, name)
-
     torch.save(state, path)
 
 
@@ -457,7 +457,7 @@ def evid_train_step(batch,num_t,loss_avg_t, emse_avg_t, emae_avg_t,pnorm,gnorm,d
     mse_energy = torch.mean(torch.square(energy_t-Eref_t))
     loss_t = evidential_loss_new(energy_t, lambdas_t, alpha_t, beta_t, Eref_t).sum()
     loss_t.backward(retain_graph=True)
-    # lr_schedule.step(loss)
+
     # #Gradient clip
     nn.utils.clip_grad_norm_(model.parameters(),maxnorm)
     pnorm = pnorm + compute_pnorm(model)
@@ -497,7 +497,6 @@ def gauss_train_step(batch,num_t,loss_avg_t, emse_avg_t, emae_avg_t,device,maxno
 
     loss_t = (gauss_loss(energy_t, lambdas_t, Eref_t) + l2_regularizer(model)).sum()
     loss_t.backward(retain_graph=True)
-    # lr_schedule.step(loss)
     # #Gradient clip
     nn.utils.clip_grad_norm_(model.parameters(),maxnorm)
     pnorm = compute_pnorm(model)
@@ -577,8 +576,6 @@ def gauss_eval_step(batch,num_v,loss_avg_v, emse_avg_v, emae_avg_v,device):
 # ------------------------------------------------------------------------------
 # Train PhysNet model
 # ------------------------------------------------------------------------------
-
-
 logging.info("starting training...")
 
 # Define Optimizer
@@ -586,22 +583,15 @@ optimizer = torch.optim.Adam(params=model.parameters(), lr=args.learning_rate,
                              weight_decay=args.l2lambda,amsgrad=True)
 
 lr_schedule = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=np.power(args.decay_rate,1/args.decay_steps))
-# lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,factor=args.decay_rate,patience=2,verbose=True)
-# lr_schedule = NoamLR(optimizer=optimizer,warmup_epochs=[2.0],total_epochs=[args.max_steps],
-#                      steps_per_epoch=args.num_train // args.batch_size,
-#                      init_lr=[args.learning_rate],
-#                      max_lr=[0.001],
-#                      final_lr=[2*args.learning_rate])
 
 # Define Exponential Moving Average
-
 ema = ExponentialMovingAverage(model.parameters(),decay=args.ema_decay)
+
 # Initiate epoch and step counter
 epoch = torch.tensor(1, requires_grad=False, dtype=torch.int64)
 step = torch.tensor(1, requires_grad=False, dtype=torch.int64)
 
-# Initiate checkpoints and load latest checkpoint
-
+# Initiate checkpoints and load last checkpoint
 latest_ckpt = load_checkpoint(checkpoint_file)
 if latest_ckpt is not None:
     model.load_state_dict(latest_ckpt['model_state_dict'])
@@ -615,6 +605,7 @@ valid_batches = data.get_valid_batches()
 time_train_estimation = np.nan
 time_train = 0.0
 best_loss = np.Inf
+
 # Training loop
 # Terminate training when maximum number of iterations is reached
 while epoch <= args.max_steps:
