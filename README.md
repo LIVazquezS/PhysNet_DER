@@ -78,3 +78,8 @@ It will return a value for the energy of the molecule, the variance(epistemic un
 This is still a work in progress, if you have questions or problems please contact:
 
 L.I.Vazquez-Salazar, email: luisitza.vazquezsalazar@unibas.ch
+
+## Reference
+
+- Vazquez-Salazar, L. I.; Boittier, E. D.; Meuwly, M. Uncertainty quantification for
+predictions of atomistic neural networks. arXiv e-prints 2022, [arXiv:2207.06916](https://arxiv.org/abs/2207.06916)
