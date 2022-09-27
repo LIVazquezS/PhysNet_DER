@@ -1,7 +1,7 @@
-# Evidential version of PhysNet
+# PhysNet DER (Deep Evidential Regression)
 Based on the Pytorch version of PhysNet, an evidential layer is implemented. 
 
-## Using Physnet Evidential
+## Using Physnet-DER
 ### Setting up the environment
 
 We recommend to use [ Miniconda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/download.html) for the creation of a virtual environment. 

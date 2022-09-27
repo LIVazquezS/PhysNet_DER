@@ -26,9 +26,6 @@ class InteractionLayer(nn.Module):
         # Residual layers
         self.residual_layer = nn.ModuleList([ResidualLayer(F, F, activation_fn=self.activation_fn,
                                                            rate=self.rate,device=self.device) for _ in range(num_residual)])
-        # nn.Sequential(
-        #     *[ResidualLayer(F, F, activation_fn=self.activation_fn, rate=self.rate,device=self.device) for _ in range(num_residual)]
-        # )
         # For performing the final update to the feature vectors
         self.dense = DenseLayer(F, F,device=self.device)
         self.u = nn.Parameter(torch.ones([F], device=self.device,dtype=torch.float32))
@@ -55,7 +52,6 @@ class InteractionLayer(nn.Module):
         # Residual layers
         for i in range(len(self.residual_layer)):
             message = self.residual_layer[i](message)
-        # message_res = self.residual_layer(message_sum)
         if self.activation_fn is not None:
             message = self.activation_fn(message)
 

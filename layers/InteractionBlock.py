@@ -22,9 +22,6 @@ class InteractionBlock(nn.Module):
         self.residual_layers = nn.ModuleList([ResidualLayer(F,F,activation_fn=self.activation_fn,rate=self.rate,
                                                             device=self.device) for _ in range(num_residual_atomic)])
 
-            #nn.Sequential(
-           # *[ResidualLayer(F,F,activation_fn=activation_fn,rate=rate,device=self.device)
-           #   for _ in range(num_residual_atomic)])
 
 
     def forward(self,x,rbf,idx_i,idx_j):

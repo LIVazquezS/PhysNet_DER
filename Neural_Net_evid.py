@@ -127,7 +127,6 @@ class PhysNet(nn.Module):
         # Atom embeddings (we go up to Pu(94): 95 - 1 ( for index 0))
         self.embeddings = nn.Parameter(torch.empty(95, self.F,device=self.device).uniform_(-np.sqrt(3), np.sqrt(3)).requires_grad_(True))
 
-        # torch.histogram(self.embeddings)
         # Initialize the radial basis functions
         self.rbf_layer = RBFLayer(K, sr_cut,device=self.device)
         # Initialize variables for d3 dispersion (the way this is done,
@@ -182,9 +181,7 @@ class PhysNet(nn.Module):
         self.ascale = nn.Parameter(torch.ones(95, device=self.device, dtype=dtype))
         self.bscale = nn.Parameter(torch.ones(95, device=self.device, dtype=dtype))
         self.lscale = nn.Parameter(torch.ones(95, device=self.device, dtype=dtype))
-        # self.ashift = nn.Parameter(torch.zeros(95,device=self.device,dtype=dtype))
-        # self.bshift = nn.Parameter(torch.zeros(95, device=self.device, dtype=dtype))
-        # self.lshift = nn.Parameter(torch.zeros(95, device=self.device, dtype=dtype))
+
 
         self.interaction_block = nn.ModuleList([InteractionBlock(
             K, F, num_residual_atomic, num_residual_interaction,
@@ -343,7 +340,6 @@ class PhysNet(nn.Module):
         Ea = self.Escale[Z.type(torch.int64)] * Ea \
              + self.Eshift[Z.type(torch.int64)]
 
-        # + 0*tf.reduce_sum(R, -1))
         # Last term necessary to guarantee no "None" in force evaluation
         Qa = self.Qscale[Z.type(torch.int64)] * Qa \
                  + self.Qshift[Z.type(torch.int64)]
@@ -604,8 +600,6 @@ class PhysNet(nn.Module):
         Na_helper = torch.ones_like(batch_seg, dtype=self.dtype)
         Na_per_batch = segment_sum(Na_helper,batch_seg.type(torch.int64),device=self.device)
 
-        # Na_per_batch = segment_coo(torch.ones_like(batch_seg, dtype=self.dtype),
-        #                        index=batch_seg.type(torch.int64),reduce="sum")
 
         if Q_tot is None:  # Assume desired total charge zero if not given
             Q_tot = torch.zeros_like(Na_per_batch, dtype=self.dtype)

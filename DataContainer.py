@@ -294,7 +294,5 @@ class DataContainer:
         if self._EperA_stdev is None:
             self._compute_E_statistics()
         return np.float(self._EperA_stdev.detach().numpy())
-    # @property
-    # def train_data(self): 
-    #     return self._DperA_stdev
+
         

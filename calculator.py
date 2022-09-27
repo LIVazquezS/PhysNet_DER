@@ -122,8 +122,8 @@ class PhysNetCalculator(Calculator):
         self._Q_tot = torch.tensor([charge],dtype=dtype,device=self.device)
         self._idx_i, self._idx_j = self.get_indices(atoms,device=self.device)
 
-        # Initiate Embedded flag
-        # self.pcpot = None
+
+
         def load_checkpoint(path):
             if path is not None:
                 checkpoint = torch.load(path)
@@ -190,7 +190,6 @@ class PhysNetCalculator(Calculator):
             self._last_energy, lambdas, alpha, beta = self.model.energy_evidential(self.Z, self.R, idx_i, idx_j, Q_tot=self.Q_tot, batch_seg=None,
                                             offsets=offsets, sr_idx_i=sr_idx_i, sr_idx_j=sr_idx_j,
                                             sr_offsets=sr_offsets)
-            # evi_out = evidential(out1)
 
             # self._last_energy, lambdas, alpha, beta = torch.split(out1,
             #                                                              out1.shape[1]//4,

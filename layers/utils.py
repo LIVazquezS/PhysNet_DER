@@ -11,17 +11,6 @@ def segment_sum(data, segment_ids,device='cpu'):
     :param segment_ids: A 1-D tensor containing the indices for the segmentation.
     :return: a tensor of the same type as data containing the results of the segmented summation.
     """
-    #Note: Eric fix this on 14/03/2022
-    # if not all(segment_ids[i] <= segment_ids[i + 1] for i in range(len(segment_ids) - 1)):
-    #     raise AssertionError("elements of segment_ids must be sorted")
-
-    # if len(segment_ids.shape) != 1:
-    #     raise AssertionError("segment_ids have be a 1-D tensor")
-    #
-    # if data.shape[0] != segment_ids.shape[0]:
-    #     raise AssertionError("segment_ids should be the same size as dimension 0 of input.")
-
-    # num_segments = len(torch.unique(segment_ids))
     return unsorted_segment_sum(data, segment_ids, len(torch.unique(segment_ids)),device=device)
 
 
@@ -45,5 +34,4 @@ def unsorted_segment_sum(data, segment_ids, num_segments,device='cpu'):
 
     shape = [num_segments] + list(data.shape[1:])
     tensor = torch.zeros(*shape,device=device).scatter_add(0, segment_ids, data)
-    # tensor = tensor.type(data.dtype)
     return tensor
