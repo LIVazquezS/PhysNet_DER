@@ -4,10 +4,10 @@ import numpy as np
 import os
 import sys
 import argparse
-from PhysNet.Neural_Net_evid import PhysNet
-from PhysNet.Neural_Net_evid import gather_nd
-from PhysNet.layers.activation_fn import *
-from PhysNet.DataContainer import *
+from Neural_Net_evid import PhysNet
+from Neural_Net_evid import gather_nd
+from layers.activation_fn import *
+from DataContainer import *
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
