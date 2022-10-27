@@ -4,10 +4,10 @@ import numpy as np
 import os
 import sys
 import argparse
-from Neural_Net_evid import PhysNet
-from Neural_Net_evid import gather_nd
-from layers.activation_fn import *
-from DataContainer import *
+from PhysNet.Neural_Net_evid import PhysNet
+from PhysNet.Neural_Net_evid import gather_nd
+from PhysNet.layers.activation_fn import *
+from PhysNet.DataContainer import *
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -44,7 +44,7 @@ parser.add_argument("--max_norm", default=1000.0, type=float)
 parser.add_argument("--ema_decay", default=0.999, type=float)
 parser.add_argument("--rate", default=0.0, type=float)
 parser.add_argument("--l2lambda", default=0.0, type=float)
-parser.add_argument("--nhlambda", default=0.0, type=float)
+parser.add_argument("--nhlambda", default=0.1, type=float)
 #Note: This parameter is setup to 0.2 as it was the best value on the paper of Amini...
 parser.add_argument("--lambda_conf", default=0.2, type=float,
                     help="Lambda value of the confidence of the prediction")
@@ -55,6 +55,10 @@ parser.add_argument("--save_interval", default=5, type=int)
 parser.add_argument("--record_run_metadata", default=0, type=int)
 parser.add_argument('--device', default='cuda', type=str)
 parser.add_argument('--checkpoint', default='', type=str)
+parser.add_argument("--plot", type=int, default=1)
+parser.add_argument("--save", type=int, default=1)
+parser.add_argument("--plot_name", type=str, default=None)
+parser.add_argument("--csv_name", type=str, default=None)
 
 # if no command line arguments are present, config file is parsed
 config_file = 'config.txt'
@@ -65,6 +69,24 @@ if len(sys.argv) == 1:
         args = parser.parse_args(["--help"])
 else:
     args = parser.parse_args()
+
+if args.plot == 1:
+    plot = True
+    if args.plot_name == None:
+        save_plot = False
+    else:
+        save_plot = True
+        plot_name = args.plot_name
+else:
+    plot = False
+
+if args.save == 1:
+    save = True
+
+    if args.csv_name == None:
+        save_name = 'results.csv'
+else:
+    save = False
 
 model = PhysNet(
     F=args.num_features,
@@ -88,7 +110,10 @@ model = PhysNet(
 checkpoints = [args.checkpoint]
 def load_checkpoint(checkpoints):
     if checkpoints[0] is not None:
-        checkpoint = torch.load(checkpoints[0])
+        if args.device == 'cuda':
+            checkpoint = torch.load(checkpoints[0])
+        else:
+            checkpoint = torch.load(checkpoints[0], map_location=torch.device('cpu'))
         return checkpoint
 
 
@@ -212,7 +237,7 @@ def write(N_e,Z_e,R_e,E_e,id,folder,save=True):
             with open('error_{}_{}.xyz'.format(id,i), 'w') as f:
                 for item in block:
                     f.write("%s\n" % item)
-            os.chdir('..')
+            os.chdir('')
         else:
             print(block)
 
@@ -239,10 +264,9 @@ data = DataContainer(
     args.dataset, args.num_train, args.num_valid,
     args.batch_size, args.valid_batch_size, seed=args.seed)
 
-test_batches = data.get_test_batches()
+test_batches = data.get_test_batches(batch_size=100)
 print("Number of test batches:", len(test_batches))
-eshift = data.EperA_m_n # The energy shift is the mean energy of the training dataset
-escale = data.EperA_s_n # the energy scale is the standard deviation of the training dataset
+
 
 MAE_by_batch = []
 RMSE_by_batch = []
@@ -254,7 +278,7 @@ Error_by_mol_batch = []
 for ib, batch in enumerate(test_batches):
     energy_test_list, Eref_test_list, mae_energy, mse_energy, rmse_energy, var,sigma2 = evid_test_step(batch,args.device)
     E_by_mol = np.abs(energy_test_list - Eref_test_list)
-    get_error_mols('Error_1.0',ib,batch,var)
+    # get_error_mols('Error_1.0',ib,batch,var)
     Error_by_mol_batch.extend(E_by_mol)
     MAE_by_batch.append(mae_energy)
     RMSE_by_batch.append(rmse_energy)
@@ -270,10 +294,8 @@ MAE_final = np.mean(MAE_by_batch)
 RMSE_final = np.mean(RMSE_by_batch)
 print('MAE(kcal/mol): {:.4}'.format(MAE_final*23))
 print('RMSE(kcal/mol): {:.4}'.format(RMSE_final*23))
-#TODO: Make this as a flag
-save = False
-plot = False
-save_plot = False
+
+
 
 
 slope, intercept, r, p, se = stats.linregress(energies_by_batch, Eref_by_batch)
@@ -282,7 +304,8 @@ print('R^2(Pearson correlation coefficient: {:.4}'.format(rsquare))
 dct = {'Energy Reference(eV)': energies_by_batch, 'Energy Test(eV)': Eref_by_batch, 'Error(eV)': Error_by_mol_batch, 'Variance(eV)': var_by_batch,'sigma2':sigma2_by_batch}
 df = pd.DataFrame(dct)
 if save:
-    df.to_csv('Results_t.csv', index=False)
+    print('Name of .csv file', save_name)
+    df.to_csv(save_name, index=False)
 
 if plot:
     fig, ax = plt.subplots()
@@ -292,6 +315,7 @@ if plot:
              verticalalignment='top')
     plt.show()
     if save_plot:
-        fig.savefig('evidential_test_set_scale.pdf', bbox_inches='tight')
+        print('Name of plot file', plot_name)
+        fig.savefig(plot_name, bbox_inches='tight')
 
 
