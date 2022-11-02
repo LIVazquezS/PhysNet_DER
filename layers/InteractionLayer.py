@@ -42,11 +42,10 @@ class InteractionLayer(nn.Module):
         g = self.k2f(rbf)
         # calculate contribution of neighbors and central atom
         xi = self.dense_i(xa)
-        # TODO: Change this to gather because is faster on gpu
-        pxj = g * self.dense_j(xa)[idx_j.type(torch.int64)]
+        j = idx_j.view(-1, 1).expand(-1, x.shape[-1]).type(torch.int64)
+        pxj = g * torch.gather(self.dense_j(xa), 0,j)
         xj = segment_sum(pxj, idx_i.type(torch.int64), device=self.device)
-        # xj = torch.zeros(xi.shape,device=self.device).index_add(0, idx_i.type(torch.int64), pxj)
-        # xjp = xj.clone()
+
         # Do the sum of messages
         message = xi + xj
         # Residual layers
